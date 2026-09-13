@@ -14,15 +14,18 @@ Date of the recorded result: 2026-09-12. Hardware: AMD RX 470 (gfx803, Polaris10
 
 ## 1. The result
 
-All four runs used one identical configuration. Only the driver and the `FSR4_DOT_MODE` value
-changed between them.
+All four runs used one identical configuration. The driver changed between them, and in run C the
+layer left FSR4's packed dot products alone instead of expanding them.
 
-| run | driver | FSR4_DOT_MODE | mean ms | fps |
+| run | driver | int8 dot product | mean ms | fps |
 |---|---|---|---:|---:|
-| A | Mesa 26.1.6 + our patch | i32 | 23.19 | 43.1 |
-| B | Mesa 26.2.2 + our patch | i32 | 23.36 | 42.8 |
-| C | Mesa 26.2.2 stock | dot | 24.96 | 40.1 |
-| D | Mesa 26.2.2 stock | i32 | 35.25 | 28.4 |
+| A | Mesa 26.1.6 + our patch | expanded | 23.19 | 43.1 |
+| B | Mesa 26.2.2 + our patch | expanded | 23.36 | 42.8 |
+| C | Mesa 26.2.2 stock | `OpSDot` | 24.96 | 40.1 |
+| D | Mesa 26.2.2 stock | expanded | 35.25 | 28.4 |
+
+Expanded means the form the layer writes: four sign-extending byte extracts, four 32-bit multiplies
+and three adds per packed dot product.
 
 Three conclusions follow.
 
@@ -42,21 +45,19 @@ Run A was repeated later the same day, after the harness environment file change
 
 Mesa merge request 41178 landed on 2026-05-01 and first shipped in Mesa 26.2. It rewrites the NIR
 software expansion of `sdot_4x8` and related opcodes to use `imul24_relaxed`. That expansion only
-runs when a shader contains an `OpSDot` instruction.
+runs when a module reaches the driver with an `OpSDot` instruction in it.
 
-Our shaders contain no `OpSDot`. Verify this yourself:
+The modules the driver sees carry none. vkd3d-proton compiles FSR4's `dot4add_i8packed` into
+`OpSDot`, and the layer rewrites every one of them into byte extracts, 32-bit multiplies and adds
+before the module reaches the driver. NIR therefore never receives an `nir_op_sdot_4x8_iadd` node,
+and upstream's rule never fires.
 
-```bash
-for f in data/spirv/*.spv; do spirv-dis --no-color "$f"; done | grep -cE "Op(SDot|UDot|SUDot)"
-```
+Check the rewrite with `FSR4_DEBUG=1`, which prints one `dot product expanded` line per module the
+layer rewrites.
 
-The count is zero. The reason is in `opcodes/dxil/dxil_arithmetic.cpp` of dxil-spirv, changed by
-`patches/dxil-spirv-fsr4-int8.patch`. In `i32` mode,
-`emit_i8_dot_instruction` emits the decomposition itself as `build_bfe` plus `OpIMul` plus `OpIAdd`.
-NIR therefore never receives an `nir_op_sdot_4x8_iadd` node, and upstream's rule never fires.
-
-Our patch matches the already-expanded `extract_i8` and `imul` form instead. The two changes are
-complementary. Run D is the control that proves it.
+Our patch matches the expanded `extract_i8` and `imul` form instead. The layer's rewrite and the
+driver patch work as a pair. Run D is the control that proves it: the rewrite on a stock driver,
+with nothing to fuse the multiplies, is the slowest of the four.
 
 ---
 
@@ -106,7 +107,7 @@ Install these four trees:
 
 | path | contents | source |
 |---|---|---|
-| `/data/fsr4_tools` | benchmark harness | `tools/` |
+| `/data/fsr4_tools` | benchmark harness and the Vulkan layer | `tools/` |
 | `/data/radv_custom` | Mesa 26.1.6 plus our patch | `radv/mesa-26.1.6-patched/` |
 | `/data/radv_262/stock` | Mesa 26.2.2 stock | `radv/mesa-26.2.2-stock/` |
 | `/data/radv_262/patched` | Mesa 26.2.2 plus our patch | `radv/mesa-26.2.2-patched/` |
@@ -125,14 +126,11 @@ Copy the sample tree to `/data/fsr_sdk_test/repo`. The sample resolves its asset
 `..\..\..\..\..\..\media\`, so the executable must stay exactly six levels below the tree root, at
 `Samples/Upscalers/FidelityFX_FSR/dx12/x64/Release`. A flat copy breaks asset loading.
 
-Install the patched vkd3d-proton into both places. Proton re-syncs the prefix from its own install
-on every launch, so patching the prefix alone reverts silently.
+Build the layer in place:
 
 ```bash
-P=/data/proton-cachyos/proton-cachyos-11.0-20260703-slr-x86_64/files/lib/wine/vkd3d-proton/x86_64-windows
-chmod u+w $P/d3d12core.dll $P/d3d12.dll
-cp vkd3d-proton/d3d12core.dll vkd3d-proton/d3d12.dll $P/
-md5sum $P/d3d12core.dll
+cd /data/fsr4_tools/fsr4_layer
+gcc -O2 -fPIC -shared -o libfsr4_layer.so fsr4_layer.c -lpthread
 ```
 
 ---
@@ -207,14 +205,22 @@ Run one benchmark at a time. The box has one GPU under test.
 
 ```bash
 export MESA_VK_DEVICE_SELECT=1002:67df   # mandatory, hides the weak OLAND card
+export FSR4_SET=off                      # rewrite the dot products, replace no shader
+R=/data/fsr4_tools/fsr4_layer/fsr4-run
 
-VK_DRIVER_FILES=/data/radv_custom/radeon_icd.x86_64.json        /data/fsr4_tools/bench_fsr4.sh i32 1 40   # A
-VK_DRIVER_FILES=/data/radv_262/patched/radeon_icd.x86_64.json   /data/fsr4_tools/bench_fsr4.sh i32 1 40   # B
-VK_DRIVER_FILES=/data/radv_262/stock/radeon_icd.x86_64.json     /data/fsr4_tools/bench_fsr4.sh dot 1 40   # C
-VK_DRIVER_FILES=/data/radv_262/stock/radeon_icd.x86_64.json     /data/fsr4_tools/bench_fsr4.sh i32 1 40   # D
+VK_DRIVER_FILES=/data/radv_custom/radeon_icd.x86_64.json       $R /data/fsr4_tools/bench_fsr4.sh exp 1 40   # A
+VK_DRIVER_FILES=/data/radv_262/patched/radeon_icd.x86_64.json  $R /data/fsr4_tools/bench_fsr4.sh exp 1 40   # B
+FSR4_NO_SDOT_EXPAND=1 \
+VK_DRIVER_FILES=/data/radv_262/stock/radeon_icd.x86_64.json    $R /data/fsr4_tools/bench_fsr4.sh sdot 1 40  # C
+VK_DRIVER_FILES=/data/radv_262/stock/radeon_icd.x86_64.json    $R /data/fsr4_tools/bench_fsr4.sh exp 1 40   # D
 ```
 
-Each run prints one CSV row: `dot_mode,skip_n,frames,mean_ms,median_ms,min_ms,fps`.
+The first argument to the harness is the label it writes into the CSV row. Each run prints one row:
+`label,skip_n,frames,mean_ms,median_ms,min_ms,fps`.
+
+`fsr4-run` sets `VKD3D_CONFIG=pipeline_library_ignore_spirv`, and the runs need it. vkd3d-proton
+otherwise serves pipelines from its own cache without handing SPIR-V to the driver, and the layer
+has nothing to see.
 
 The harness deletes both vkd3d cache files itself. Both must go, because there is a `.cache` and a
 `.cache.write`, and a surviving second file makes shader translation silently reuse old results.

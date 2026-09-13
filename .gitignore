@@ -79,6 +79,8 @@ tools/fsr4_tune/work/
 tools/fsr4_tune/fsr4_tune.json
 *.tgz
 *.bin
+# The FSR4 weight block, which every rewrite is built from.
+!data/weights/fsr4_411b_weights.bin
 
 # Scratch output of the tuning tools.
 ovr_*/
@@ -86,3 +88,6 @@ pair_std*/
 err_*/
 eq_*/
 
+
+# Release archives built by tools/make_release.sh.
+build/

@@ -18,7 +18,7 @@ uploads reaches them. Two routes were ruled out first:
 2. **Direct `memcpy` from `mem.cpu_address`** — impossible: a probe showed DEFAULT-heap buffers are
    device-local on this small-BAR box (`cpu_address == NULL` for **0 of 2450**).
 
-The working route avoids GPU readback plumbing entirely: patch
+The working route avoids GPU readback plumbing entirely: intercept
 `d3d12_device_CreateCommittedResource1` so that DEFAULT-heap **buffers between 4 KB and 256 KB** are
 allocated from a `D3D12_HEAP_TYPE_CUSTOM` heap with `CPU_PAGE_PROPERTY_WRITE_BACK` +
 `MEMORY_POOL_L0` — i.e. host-visible system memory. `mem.cpu_address` then becomes valid, and the
@@ -31,9 +31,8 @@ Reproduce with:
 1,197 host-visible buffers (19 MB) are captured; the 28 here are those passing a weight-signature
 filter (12 ≤ mean|w| ≤ 40, zeros < 8%, ≥200 distinct byte values) and deduplicated by MD5.
 
-**This is a debug mode only** — it moves those buffers off VRAM into system memory and costs
-performance. It is env-gated and off by default; the shipped configuration still benchmarks at the
-expected ~44.9 ms.
+**This is a capture mode only** — it moves those buffers off VRAM into system memory and costs
+performance. Use it to dump weights, never to measure frametimes.
 
 ## Caveats / still to verify
 * The signature filter is heuristic. Combined mean|w| (34.5) and zero rate (4.81%) differ from the

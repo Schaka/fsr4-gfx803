@@ -1,16 +1,15 @@
 #!/bin/bash
 # Full data collection sweep. Runs ON the gfx803 box, writes to /data/tmp/collected/.
 # Pull the results to data/ with scp from the workstation.OUT=/data/tmp/collected; mkdir -p $OUT; cd "$(dirname "$0")" || exit 1
-echo "dot_mode,skip_n,frames,mean_ms,median_ms,min_ms,fps" > $OUT/benchmarks.csv
-for m in mad16 i16 i32 fp32; do ./bench_fsr4.sh $m 1 20 >> $OUT/benchmarks.csv; done
+echo "label,skip_n,frames,mean_ms,median_ms,min_ms,fps" > $OUT/benchmarks.csv
+# One row per skip factor: every frame, every second frame, every fourth frame.
+for n in 1 2 4; do ./bench_fsr4.sh skip$n $n 20 >> $OUT/benchmarks.csv; done
 # occupancy / register / throughput stats for every shader
-./bench_fsr4.sh mad16 1 20 stats >/dev/null
-cp /data/tmp/bench_mad16_1.log $OUT/shaderstats_mad16.log
+./bench_fsr4.sh stats 1 20 stats >/dev/null
+cp /data/tmp/bench_stats_1.log $OUT/shaderstats.log
 # full ISA for instruction-mix analysis
-./bench_fsr4.sh mad16 1 20 asm >/dev/null
-cp /data/tmp/bench_mad16_1.log $OUT/isa_mad16.log
-./bench_fsr4.sh i16 1 20 asm >/dev/null
-cp /data/tmp/bench_i16_1.log $OUT/isa_i16.log
+./bench_fsr4.sh isa 1 20 asm >/dev/null
+cp /data/tmp/bench_isa_1.log $OUT/isa.log
 # dispatch trace (shape + count per frame)
 source ./fsr4_env.sh; cd "$FSR4_TESTDIR"
 rm -f vkd3d-proton.cache* OptiScaler.log

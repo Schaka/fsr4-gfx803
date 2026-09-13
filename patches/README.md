@@ -4,10 +4,6 @@
 |---|---|---|
 | `mesa-26.2.2-nir-imul24-int8.patch` | Mesa 26.2.2, commit `0ae52750` | The Mesa patch. Use this one. |
 | `mesa-nir-imul24-int8.patch` | Mesa 26.1.6, commit `ffa422e53d` | The same rules against 26.1.6. It built `../radv/mesa-26.1.6-patched/`. |
-| `dxil-spirv-fsr4-int8.patch` | dxil-spirv `7ecda135de74` | Adds `FSR4_DOT_MODE` and the INT8 cooperative-matrix formats. |
-| `vkd3d-proton-fsr4.patch` | vkd3d-proton `3dfc6f07d095` | Diagnostic hooks only. See `../vkd3d-proton/README.md`. |
-
-The two vkd3d-proton-side patches built `../vkd3d-proton/`. That README has the build steps.
 
 ---
 
@@ -36,9 +32,11 @@ in 32 bits. `../data/imul24/README.md` has the full argument and the ISA counts.
 ### Why upstream Mesa 26.2 does not replace it
 
 Upstream merge request 41178, merged 2026-05-01 and first shipped in 26.2, applies the same 24-bit
-idea to NIR's software `sdot_4x8` expansion. That expansion runs only for shaders that contain
-`OpSDot`. These shaders contain none. In `i32` mode, dxil-spirv emits the decomposition itself, so
-NIR never builds the node that the upstream rule matches. This patch matches the expanded form.
+idea to NIR's software `sdot_4x8` expansion. That expansion runs on the `OpSDot` the shader carries.
+The Vulkan layer rewrites those dot products into plain 32-bit multiplies before the driver sees the
+module, and this patch is what matches that form. The layer's rewrite is the faster of the two: whole
+frames on an RX 570 in Pragmata, patched driver in both runs and no shaders replaced, are 25.99 ms
+through Mesa's own lowering and 23.50 ms through the layer's.
 
 Pragmata measurements, upscaler on every frame, 1280x720 to 1920x1080:
 

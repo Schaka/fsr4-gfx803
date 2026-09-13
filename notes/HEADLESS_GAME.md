@@ -46,7 +46,7 @@ input resolution of 1280x720.
 ## Results, 2026-09-13
 
 Real gameplay from one save, upscaler on every frame, 100-second window, 1280x720 upscaled to
-1920x1080, `FSR4_DOT_MODE=i32`.
+1920x1080.
 
 | upscaler DLL | RADV | mean ms | fps |
 |---|---|---:|---:|

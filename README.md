@@ -9,11 +9,14 @@ Two pieces do the work.
    network is emulated. Stock Mesa uses full 32-bit multiplies. The patch emits `v_mad_i32_i24`
    instead, a full-rate 24-bit multiply-add that GCN has had since its first generation, and it is
    exact for 8-bit operands. In Pragmata that alone makes frames 2.28 times faster than stock Mesa.
-2. **A Vulkan layer with tuned shaders.** FSR4's network shaders are rewritten: the weights become
-   constants, and two output channels share one multiply through a quantized, packed operand. The
-   layer swaps them in at run time, and falls back to the game's own shader whenever the driver
-   rejects one. On a Vega 56 the upscaler pass goes from 7.5 ms to 3 ms, and on an RX 570 from about
-   14.5 ms to 9.5 ms.
+2. **A Vulkan layer.** It does two things. It rewrites FSR4's packed dot products into the plain
+   32-bit multiplies the driver patch matches, on any card that has no hardware instruction for
+   them. It also swaps FSR4's network shaders for tuned ones, in which the weights are constants and
+   two output channels share one multiply through a quantized, packed operand. A shader the driver
+   rejects falls back to the game's own. On a Vega 56 the upscaler pass goes from 7.5 ms to 3 ms, and
+   on an RX 570 from about 14.5 ms to 9.5 ms.
+
+Nothing else is patched. Your normal Proton and vkd3d-proton are used as they are.
 
 Neither piece is installed system-wide. The driver is a second copy of RADV that one game opts into
 through an environment variable, and the layer is enabled per game in the same way.
@@ -57,7 +60,8 @@ gcc -O2 -fPIC -shared -o libfsr4_layer.so fsr4_layer.c -lpthread
 | `quality` | per-pass mix, every pass held under 15 percent error | hard to tell from stock |
 | `balanced` | per-pass mix, under 25 percent | very close to stock |
 | `speed` | drops every weight of magnitude 16 or less | visibly softer, fastest |
-| `off` | change nothing | stock FSR4 |
+| `off` | replace no shader, but still rewrite the dot products | stock FSR4, faster on GCN4 |
+| `none` | do not load the layer at all | stock FSR4 |
 
 Nineteen sets ship in total, one per variant we measured, and any of them can be named directly.
 `FSR4_SET=list` prints them, and `docs/SETS.md` says what each one is, what it measured on two cards,
@@ -66,27 +70,25 @@ and how it looked.
 Other variables: `FSR4_DEBUG=1` prints one line per replaced shader, `FSR4_SETS` points at another
 directory of sets, and `FSR4_CACHE` moves the cache.
 
-The sets are built for the vkd3d-proton in this repository. With a different build the layer finds no
-match and changes nothing, and `tools/fsr4_tune/` rebuilds them for your card and your vkd3d.
+A set holds SPIR-V that replaces what vkd3d-proton compiled, so the layer has to recognise the build
+you run. Two Proton builds are covered out of the box. On a third the layer replaces nothing, which
+is harmless and leaves you with `off` behaviour, and `tools/fsr4_tune/make_keys.py` teaches the
+shipped sets that build in one step. `tools/fsr4_tune/` rebuilds the sets from scratch for your card.
 
 ---
 
 ## What you need
 
-Three parts. The first two are required, the third is what the tuned shaders need.
+Two parts, and your normal Proton.
 
 | part | what it does | where |
 |---|---|---|
 | Mesa / RADV | NIR rules that emit `v_mad_i32_i24`, so an int8 multiply-add costs one instruction | `patches/mesa-26.2.2-nir-imul24-int8.patch`, prebuilt in `radv/` |
-| vkd3d-proton | routes FSR4's int8 multiplies into the 32-bit form the driver patch matches, through `FSR4_DOT_MODE` | `vkd3d-proton/`, source in `patches/dxil-spirv-fsr4-int8.patch` and `patches/vkd3d-proton-fsr4.patch` |
-| Vulkan layer | swaps FSR4's network shaders for tuned ones at run time | `tools/fsr4_layer/` |
+| Vulkan layer | rewrites the packed dot products, and swaps FSR4's network shaders for tuned ones | `tools/fsr4_layer/` |
 
-The driver patch is the one that makes FSR4 usable at all on GCN4. The vkd3d build matters for two
-reasons: it carries `FSR4_DOT_MODE=i32`, which is what the driver patch keys on, and the shipped
-shader sets are built against the SPIR-V that this build produces. With a different vkd3d the layer
-finds no match and changes nothing, which is harmless, and `tools/fsr4_tune` rebuilds the sets.
-
-The layer is optional. Without it you get stock FSR4 shaders on the patched driver.
+The driver patch is the one that makes FSR4 usable at all on GCN4. The layer is what turns FSR4's
+multiplies into the form the driver patch matches, so the two belong together: the driver patch alone
+leaves most of the gain on the table.
 
 Use `patches/mesa-26.2.2-nir-imul24-int8.patch` for Mesa 26.2.2. `patches/mesa-nir-imul24-int8.patch`
 is the original against 26.1.6. It also applies to 26.2.2, but with line offsets.
@@ -99,8 +101,8 @@ Prebuilt copies of everything, with checksums, are listed in `CHECKSUMS.md`.
 
 If you would rather not build anything, the
 [latest release](https://github.com/Schaka/fsr4-gfx803/releases/latest) has the patched RADV, the
-patched vkd3d-proton, the Vulkan layer and the three shader sets attached, with an `install.sh`.
-The numbered steps below still describe what that script leaves to you.
+Vulkan layer and every shader set attached, with an `install.sh`. The numbered steps below still
+describe what that script leaves to you.
 
 ---
 
@@ -157,24 +159,7 @@ If this is wrong, FSR4's compute pipelines fail to build and the upscaler silent
 
 ---
 
-## 3. Install the patched vkd3d-proton
-
-Copy `vkd3d-proton/d3d12core.dll` and `vkd3d-proton/d3d12.dll` into **both** your Proton install and
-your game's Wine prefix:
-
-* `<proton>/files/lib/wine/vkd3d-proton/x86_64-windows/`
-* `<prefix>/drive_c/windows/system32/`
-
-Both are required. Proton re-syncs the prefix from its own install on every launch, so patching only
-the prefix reverts silently. The install copy is read-only, so `chmod u+w` it first. Verify with
-`md5sum` afterwards.
-
-This build is also what the shipped shader sets were built against. Another vkd3d produces different
-SPIR-V, the layer then matches nothing, and `tools/fsr4_tune` is the way to rebuild the sets.
-
----
-
-## 4. Build the Vulkan layer
+## 3. Build the Vulkan layer
 
 ```bash
 cd tools/fsr4_layer
@@ -185,7 +170,7 @@ That is all it needs. `fsr4-run` finds the layer and the sets next to itself.
 
 ---
 
-## 5. Set up OptiScaler
+## 4. Set up OptiScaler
 
 Install OptiScaler 0.9.4 into the game directory, with an FSR4 4.1.1 upscaler DLL. The stock 4.1.1
 DLL and the 4.1.1b INT8 build both work, and both are in `fsr4_dlls/`.
@@ -201,19 +186,16 @@ Fsr4ForceEnableInt8=true
 
 ---
 
-## 6. Launch
+## 5. Launch
 
 ```bash
 VK_DRIVER_FILES=$HOME/.local/share/radv-fsr4/radeon_icd.x86_64.json \
-FSR4_DOT_MODE=i32 \
 FSR4_SET=balanced /path/to/tools/fsr4_layer/fsr4-run \
   %command%
 ```
 
-Drop the `fsr4-run` line to run stock FSR4 shaders on the patched driver.
-
-`FSR4_DOT_MODE=i32` is what routes the shader through the patched path. Without it the Mesa patch
-does nothing.
+Set `FSR4_SET=none` to run stock FSR4 on the patched driver with the layer out of the way. That is
+much slower, because the layer is what feeds the driver patch.
 
 If your machine has more than one AMD GPU, add `MESA_VK_DEVICE_SELECT=<vendor>:<device>` so the
 right one is used. Find the IDs with `lspci -nn | grep VGA`.
@@ -221,31 +203,21 @@ right one is used. Find the IDs with `lspci -nn | grep VGA`.
 
 ---
 
-## `FSR4_DOT_MODE`
+## How the dot product reaches the driver patch
 
-FSR4 drives every multiply-accumulate through DXIL's `dot4add_i8packed`. GCN4 has no hardware
-`dp4a`, so the patched vkd3d-proton has to decompose it, and this variable picks how.
+FSR4 drives every multiply-accumulate through DXIL's `dot4add_i8packed`. vkd3d-proton turns that into
+one SPIR-V `OpSDot`, the packed 4x8 integer dot product, and GCN4 has no instruction for it, so the
+driver lowers it in software. That lowering never produces the pattern the Mesa patch matches.
 
-| value | what it emits | cost | use it? |
-|---|---|---|---|
-| `i32` | 32-bit extract, multiply, add. NIR proves the operands fit in 24 bits and ACO fuses them into `v_mad_i32_i24` | **1 VALU per MAC** | **Yes. This is the one to use, with the patch.** |
-| `mad16` | 16-bit multiply-add path | 2 VALU per MAC | The built-in default. Use only without the patch. |
-| `i16` | `v_mul_lo_u16` plus `v_add_u32_sdwa` | 2 VALU per MAC | No |
-| `vec16` | vectorised 16-bit variant | about 2 VALU per MAC | No |
-| `fp32` | converts to float, `FMul` and `FAdd` | 2 VALU per MAC, plus conversions | No |
-| `dot` | native SPIR-V `OpSDotKHR`, lowered by Mesa | slowest measured | No, but see below |
+The layer rewrites each `OpSDot` into four sign-extending byte extracts, four multiplies and three
+adds, all in 32 bits. The rewrite is exact, because a signed 4x8 dot product is nothing but the sum
+of the four signed byte products. NIR then proves the operands fit in 24 bits and ACO fuses each
+multiply into one `v_mad_i32_i24`, which is the whole point of the driver patch.
 
-`i32` is the only mode the Mesa patch affects. In every other mode the patch does nothing, because
-the shader never produces the pattern it matches.
-
-`dot` is the interesting one. It emits `OpSDotKHR` and lets Mesa lower it, which is the path
-upstream merge request 41178 optimises. On stock Mesa 26.2.2 that reaches within about 7 percent of
-`i32` with the patch, which is how we know the upstream work is sound. It is still slower, and on
-Mesa 26.1.6 or earlier it is much slower, because that lowering used plain 32-bit multiplies.
-
-If you set nothing, you get `mad16`, and the Mesa patch is wasted.
-
----
+The layer asks the device whether it accelerates the packed signed dot product, and only rewrites
+when the answer is no, so the same layer is a no-op on a card that has `dp4a`. `FSR4_NO_SDOT_EXPAND=1`
+turns the rewrite off. In Pragmata on an RX 570, with the patched driver in both cases, the rewrite
+alone takes whole frames from 25.99 ms to 23.50 ms.
 
 ## Did it work?
 
@@ -260,7 +232,8 @@ its own built-in FSR 2.1.2 copy, and any frametime you measure is meaningless.
 ## Results
 
 Measured on an RX 470 in Pragmata, real gameplay, upscaler running on every frame, one identical
-scene, 1280x720 upscaled to 1920x1080, `FSR4_DOT_MODE=i32`.
+scene, 1280x720 upscaled to 1920x1080, with the dot product rewrite in place and FSR4's own network
+shaders. They answer which FSR4 DLL to use, not which shader set.
 
 | FSR4 DLL | driver | mean ms | fps |
 |---|---|---:|---:|
@@ -277,8 +250,9 @@ scene, 1280x720 upscaled to 1920x1080, `FSR4_DOT_MODE=i32`.
 * Upgrading Mesa on its own gains nothing. Without the patch, 4.1.1 is slower than 4.0.2.
 
 Stock Mesa 26.2.2 already contains upstream merge request 41178, which applies the same 24-bit idea
-to NIR's software `sdot_4x8` lowering. It does not help here, because these shaders contain no
-`OpSDot`. vkd3d-proton emits the decomposition itself, so the upstream rule never matches.
+to NIR's software `sdot_4x8` lowering. It helps, and it is not enough: with stock vkd3d-proton the
+FSR4 shaders do contain `OpSDot`, 4,264 of them across 13 modules, and letting Mesa lower them costs
+2.5 ms per frame more than the layer's own rewrite.
 
 The logs are in `evidence/fsr-4.0.2-vs-4.1.1/` and `evidence/mesa-26.2.2-vs-our-patch/`.
 
@@ -321,14 +295,20 @@ The best variant differs per card: on the Vega, 5-bit packing wins on pass9, and
 own shader wins there. `tools/fsr4_tune/` rebuilds and re-times everything on the card it runs on.
 See its README. The short version:
 
+Run the game once with `FSR4_LAYER_DUMP=/tmp/fsr4dump` to collect the shaders it really compiles,
+then:
+
 ```bash
 cd tools/fsr4_tune
-python3 tune.py capture /your/shader/dump weights.bin
+python3 tune.py capture /tmp/fsr4dump weights.bin
 python3 tune.py generate --modes pack6,pack5,pack4,prune16
-python3 tune.py bench /your/shader/dump
-python3 tune.py install ./override --mode best
-python3 install_layer.py /your/shader/dump ./override ~/.cache/fsr4_opt/spirv
+python3 tune.py bench /tmp/fsr4dump
+python3 tune.py install ~/.local/share/fsr4/sets/mine --mode best
 ```
+
+Then run with `FSR4_SET=mine`. The layer names every dumped shader after the SPIR-V it saw and looks
+a replacement up under that same name, so a set built this way needs no translation table and is
+valid for exactly the Proton build you dumped it from.
 
 ![Pragmata title screen on the test machine, with the FSR4 watermark reading FSR4-I8 UPSCALE 4.1.1 and the OptiScaler 0.9.4 overlay open](docs/pragmata-fsr4-411-rx480.jpeg)
 
@@ -341,9 +321,8 @@ RADV, in August 2026. The overlay frametime is from the title screen, not a benc
 
 | path | what |
 |---|---|
-| `patches/` | the Mesa, dxil-spirv and vkd3d-proton patches |
+| `patches/` | the Mesa patch |
 | `radv/` | the three prebuilt RADV drivers, with an install script |
-| `vkd3d-proton/` | the prebuilt patched vkd3d-proton |
 | `drirc.d/` | the `~/.drirc` file that turns on fp16 |
 | `fsr4_dlls/` | every FSR4 upscaler DLL tested, with where each came from |
 | `pragmata_working_set/` | the OptiScaler configuration and file list for Pragmata |

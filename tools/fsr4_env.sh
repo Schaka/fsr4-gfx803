@@ -10,9 +10,6 @@ export GAMEID=0
 export MESA_VK_DEVICE_SELECT=1002:67df
 # radv_enable_float16_gfx8 is required. Copy drirc.d/99-fsr4-gfx803.conf from the repo
 # to ~/.drirc. Check with: vulkaninfo | grep shaderFloat16   (must print true)
-# int8 dot4add decomposition: i32 (use with the patched RADV) | mad16 (built-in default) |
-# i16 | vec16 | fp32 | dot. bench_fsr4.sh sets it from its first argument.
-# export FSR4_DOT_MODE=i32
 # Weston socket to connect to. Weston puts its socket in /run/user/1000.
 # Do NOT export XDG_RUNTIME_DIR for umu-run. An overridden value makes the Wine
 # client wait forever for a socket that does not exist.

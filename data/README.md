@@ -2,8 +2,8 @@
 
 This directory holds analysis data, not results. It was captured in the FSR SDK sample in August
 2026, before the Mesa patch existed, against **FSR4 4.0.2 INT8**
-(`fsr4_dlls/4.0.2-int8/`, md5 `0ca99991ce3669d1d5320eb011aadb25`) on an RX 470, with
-`FSR4_DOT_MODE=mad16` unless stated otherwise. Most of it comes from `tools/collect_data.sh`.
+(`fsr4_dlls/4.0.2-int8/`, md5 `0ca99991ce3669d1d5320eb011aadb25`) on an RX 470. Most of it comes
+from `tools/collect_data.sh`.
 
 | File | What it is |
 |---|---|
@@ -11,7 +11,7 @@ This directory holds analysis data, not results. It was captured in the FSR SDK 
 | `shaderstats/shaderstats_mad16.log` | raw ACO `RADV_DEBUG=shaderstats` output |
 | `shaderstats/shader_stats.csv` | parsed: instructions, code size, occupancy, latency vs throughput, **stall %** |
 | `isa/isa_mad16.log.gz` | full GCN ISA disassembly of every shader (27MB uncompressed) |
-| `dispatch_trace.log` | every `Dispatch(x,y,z)` for ~20s, from patched vkd3d |
+| `dispatch_trace.log` | every `Dispatch(x,y,z)` for ~20s, traced in vkd3d |
 | `dispatch_topology.csv` | distinct dispatch shapes + how often each is issued per run |
 | `spirv/*.spv` | SPIR-V for all 98 shaders the app compiles |
 | `spirv_inventory.csv` | per-shader op counts; `bitfield_extract` ≈ int8 MAC density |
@@ -56,8 +56,7 @@ full value histogram.
 **36,608 baked weights** were recovered from 9 shaders. The remaining **168,192** MAC operands in
 the hot shaders are *not* baked — they are loaded at runtime from StorageBuffers (679 loads feed
 46,080 byte-extracts in the largest shader, i.e. each load is reused heavily, which is why VMEM
-traffic is negligible). Recovering those requires dumping the SSBO at dispatch time from the
-patched vkd3d, not static analysis.
+traffic is negligible). Recovering those requires dumping the SSBO at dispatch time, not static analysis.
 
 Note the DLL is **36.7 MB of DXBC shader blobs** (1,325 of them) out of 40.7 MB total — the model is
 compiled into shaders rather than stored as a weight tensor. Only ~2.1 MB is non-shader data.

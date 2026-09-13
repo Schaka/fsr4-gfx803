@@ -28,7 +28,7 @@ and are in `weights/`. The streamed buffers are produced on the GPU by the small
 `FSR4_FORCE_HOST_WEIGHTS=1` and are in `weights_runtime/`.
 
 ## Runtime resource inventory (`resource_inventory.log`)
-Captured by instrumenting `d3d12_device_CreateCommittedResource1` in vkd3d (first 400 resources).
+Captured by tracing `d3d12_device_CreateCommittedResource1` calls (first 400 resources).
 
 400 committed resources: 216 buffers, 184 textures. DEFAULT-heap buffers total **239.5 MB**:
 

@@ -4,7 +4,12 @@ Every set is a directory of SPIR-V under `tools/fsr4_layer/sets/`. The Vulkan la
 shaders it has, and leaves everything else alone. Pick one with `FSR4_SET`.
 
 Four aliases cover the common cases: `lossless` is `exact`, `quality` is `fin15`, `balanced` is
-`fin25`, and `speed` is `prune16`. Everything else is named directly.
+`fin25`, and `speed` is `prune16`. Everything else is named directly. `FSR4_SET=off` keeps the layer
+loaded and replaces no shader, which still gives you the dot product rewrite. `FSR4_SET=none` takes
+the layer out of the process.
+
+Every number below sits on top of that rewrite. On an RX 570 in Pragmata it is worth 2.5 ms of whole
+frame time on its own, with no change to the picture at all.
 
 ## How the rewrites work
 
@@ -31,7 +36,7 @@ means it was not measured on that card.
 
 | set | what it is | Vega 56 | RX 570 | how it looked |
 |---|---|---:|---:|---|
-| stock FSR4 | the reference | 7.5 | about 14.5 | |
+| `off` | FSR4's own shaders | 7.5 | about 14.5 | the reference |
 | `exact` | weights baked in | 7.5 | 14 | bit-identical |
 | `pack6` | 6-bit packing everywhere | 6 | | no visible change |
 | `pack5` | 5-bit packing everywhere | 6 | 14.6 | no visible change |
@@ -67,5 +72,9 @@ Prefer a `pack` or `mix` set when the measured numbers are close.
 
 The output head is never rewritten in any shipped set. Its errors reach the history buffer that the
 next frame reads, so they return frame after frame as flicker.
+
+A set only matches the Proton build it was measured against, because it replaces the SPIR-V that
+vkd3d-proton compiled. Two builds are covered, and `tools/fsr4_tune/make_keys.py` adds another from
+one dump. If a set replaces nothing, that is what happened, and the run behaves like `off`.
 
 `notes/FSR4_411_ANALYSIS.md` carries the per-pass measurements behind all of this.

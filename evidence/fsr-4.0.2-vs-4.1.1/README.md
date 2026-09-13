@@ -5,8 +5,8 @@ Measured 2026-09-13 on an AMD RX 470 (Polaris10, GCN4), with `tools/bench_pragma
 ## Result
 
 Real gameplay, loaded from a save, one identical scene. The upscaler runs on every frame. Each run
-samples a 100-second window, 1280x720 upscaled to 1920x1080, `FSR4_DOT_MODE=i32`. The runs happened
-back to back, and only the upscaler DLL and the driver changed.
+samples a 100-second window, 1280x720 upscaled to 1920x1080. The runs happened back to back, and
+only the upscaler DLL and the driver changed.
 
 | run | upscaler DLL | md5 | RADV | frames | mean ms | median ms | fps |
 |---|---|---|---|---:|---:|---:|---:|

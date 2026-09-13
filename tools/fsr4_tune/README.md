@@ -34,44 +34,51 @@ more quality: pruning at 16 gives 51% error on the same pass, where pack5 gives 
 
 ## What you need
 
-A game that uses FSR4 through vkd3d-proton, plus `spirv-cross`, `glslc`, `gcc`, `g++`, python3, and
-the Vulkan loader headers.
+A game that uses FSR4, plus `spirv-cross`, `glslc`, `gcc`, `g++`, python3, and the Vulkan loader
+headers.
 
 ## Using the result
 
-The Vulkan layer in `../fsr4_layer` loads what this tool produces. `install_layer.py` copies a set
-into its cache, and `fsr4-run` puts the layer in front of a game. Read that README first if you only
-want to use the shipped sets.
+The Vulkan layer in `../fsr4_layer` loads what this tool produces, and `fsr4-run` puts the layer in
+front of a game. Read that README first if you only want the shipped sets.
 
 ## The steps
 
-1. Dump the shaders the game compiles:
+1. Dump the shaders the game compiles, through the layer:
 
-       VKD3D_SHADER_DUMP_PATH=/some/dir <launch the game>
+       FSR4_LAYER_DUMP=/some/dir FSR4_SET=off ../fsr4_layer/fsr4-run <launch the game>
 
-   Play for a few seconds in the scene you care about, then quit.
+   Play for a few seconds in the scene you care about, then quit. Each file is named after the hash
+   of the SPIR-V inside it, which is the name the layer looks a replacement up under.
 
-2. Get the weight buffer. Run the game once with `FSR4_FORCE_HOST_WEIGHTS=1` and `FSR4_DUMP_DIR`
-   set, which needs the patched vkd3d-proton from this repository, then:
+2. Build the variants and time them. `../../data/weights/fsr4_411b_weights.bin` is FSR4's weight
+   block, which is a property of the DLL and the same on every machine:
 
-       python3 pick_weights.py /the/dump/dir weights.bin
-
-3. Build the variants and time them:
-
-       python3 tune.py capture /some/dir weights.bin
+       python3 tune.py capture /some/dir ../../data/weights/fsr4_411b_weights.bin
        python3 tune.py generate --modes pack6,pack5,pack4,prune16
        python3 tune.py bench /some/dir
 
-4. Write the winners and load them through the layer:
+   For another FSR4 build, dump the buffers it fills and run `pick_weights.py <dump_dir> weights.bin`
+   to find the weight block among them.
 
-       python3 tune.py install ./override --mode best
-       python3 install_layer.py /some/dir ./override ~/.cache/fsr4_opt/spirv
-       FSR4_SETS=... ../fsr4_layer/fsr4-run <launch the game>
+3. Write the winners into a set, and run the game with it:
 
-   `VKD3D_SHADER_OVERRIDE=$PWD/override` also works, and skips the layer.
+       python3 tune.py install ~/.local/share/fsr4/sets/mine --mode best
+       FSR4_SETS=~/.local/share/fsr4/sets FSR4_SET=mine ../fsr4_layer/fsr4-run <launch the game>
 
    `--mode best` takes the fastest variant that beats the game's own shader by the margin, per
    shader. `--mode pack5` forces one mode everywhere.
+
+   The set is valid for the Proton build you dumped from. A set for another build means dumping and
+   tuning again.
+
+## Teaching the shipped sets another Proton build
+
+The sets in `../fsr4_layer/sets/` are named after DXIL blobs, and `keys.txt` maps the SPIR-V hash the
+layer sees to those names. If the shipped sets replace nothing on your Proton, add your build:
+
+    VKD3D_SHADER_DUMP_PATH=/some/dir <launch the game>
+    python3 make_keys.py /some/dir ../fsr4_layer/sets
 
 ## Checking the result
 

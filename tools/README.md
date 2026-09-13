@@ -8,8 +8,8 @@ They contain the test machine's own paths, for example the Pragmata prefix under
 |---|---|
 | `fsr4_env.sh` | Environment for the FSR SDK sample: test directory, prefix, Proton, GPU selection. Sourced by `bench_fsr4.sh`. |
 | `restart_compositor.sh` | Starts weston with the VNC and headless backends. The SDK sample runs on this compositor. |
-| `bench_fsr4.sh` | Benchmarks the SDK sample. Arguments: `FSR4_DOT_MODE` value, skip factor, seconds. Prints one CSV row. |
-| `collect_data.sh` | Runs `bench_fsr4.sh` in several modes and collects the files in `../data/`. |
+| `bench_fsr4.sh` | Benchmarks the SDK sample. Arguments: a label for the run, skip factor, seconds. Prints one CSV row. |
+| `collect_data.sh` | Runs `bench_fsr4.sh` several times and collects the files in `../data/`. |
 | `start_sway.sh` | Starts headless sway. Pragmata runs on this compositor. |
 | `vgamepad.py` | Creates a virtual Xbox 360 gamepad over uinput and presses buttons named on a FIFO. Run as root. |
 | `bench_pragmata.sh` | Starts Pragmata, loads the save with the virtual gamepad, and measures frametimes over a fixed window. Prints one CSV row. |
@@ -18,8 +18,12 @@ They contain the test machine's own paths, for example the Pragmata prefix under
 
 | `fsr4_layer/` | The Vulkan layer that swaps FSR4's shaders, and the launcher users put in front of a game. See its README. |
 | `fsr4_tune/` | Builds shader variants, times them on the card it runs on, and keeps the winners. See its README. |
+| `make_release.sh` | Builds the release archive. `make_release.sh r3` writes `build/release/`. |
+| `release_install.sh` | The `install.sh` that goes into the archive. |
+| `release_readme.md` | The README that goes into the archive. |
 
-The two directories above are for everyone. The scripts in the table are for this test machine only.
+The two directories and the three release files above are for everyone. The scripts in the first
+table are for this test machine only.
 
 `../notes/HEADLESS_GAME.md` explains why the game needs sway and a virtual gamepad.
 

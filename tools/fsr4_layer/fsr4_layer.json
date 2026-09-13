@@ -11,6 +11,11 @@
             "vkGetInstanceProcAddr": "vkGetInstanceProcAddr",
             "vkGetDeviceProcAddr": "vkGetDeviceProcAddr"
         },
-        "disable_environment": { "DISABLE_FSR4_LAYER": "1" }
+        "disable_environment": {
+            "DISABLE_FSR4_LAYER": "1"
+        },
+        "enable_environment": {
+            "FSR4_SET": "1"
+        }
     }
 }

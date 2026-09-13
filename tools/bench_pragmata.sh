@@ -22,7 +22,7 @@ sleep 5
 cd "$G" || exit 1
 rm -f OptiScaler.log
 export GAMEID=0 MESA_VK_DEVICE_SELECT=1002:67df WINEDLLOVERRIDES=dxgi=n
-export FSR4_DOT_MODE=i32
+
 [ -n "$ICD" ] && export VK_DRIVER_FILES="$ICD"
 nohup umu-run "PRAGMATA.exe" > "/data/tmp/pragmata_${LABEL}.log" 2>&1 &
 disown

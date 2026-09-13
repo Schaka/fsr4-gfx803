@@ -26,8 +26,8 @@ Polaris. The other six are three tensor-size buckets, each stored twice. The buc
 output uses tensors of 960x540, 480x270 and 240x135. The network passes read their weights from
 `InitializerBuffer` at run time.
 
-The FSR4-patched dxil-spirv command-line tool builds from
-`vkd3d-proton-build/subprojects/dxil-spirv` with `-DDXIL_SPIRV_CLI=ON`.
+The dxil-spirv command-line tool builds from `vkd3d-proton-build/subprojects/dxil-spirv` with
+`-DDXIL_SPIRV_CLI=ON`.
 
 ## Measured cost in Pragmata
 
@@ -315,7 +315,7 @@ use pruning only when the speed matters more than the picture.
 hashes every SPIR-V module the application creates and swaps in a replacement of that name. The
 original is used whenever the driver rejects one.
 
-Two things had to be handled.
+Two things need handling.
 
 1. vkd3d-proton rarely creates `VkShaderModule` objects. It puts the module inline in
    `vkCreateComputePipelines`, so the layer hooks that call as well.
@@ -333,41 +333,6 @@ Measured through the layer on the RX 570, one scene, frame time rather than upsc
 
 The layer costs nothing itself: stock through the layer measured 21.85 ms against 22.04 ms for the
 same scene through vkd3d's override path.
-
-## Design: bake the weights at load time, in vkd3d-proton
-
-The exact bake is bit-identical, so it carries no quality risk. It wins on some shaders and loses on
-others. The decision is cheap to make at load time. This design makes the win automatic for every
-game that uses this FSR4 DLL. It is also the base that the pruned variants plug into later.
-
-### Where the weights come from
-
-Read them from the DLL file. `InitializerBuffer` is static data: bytes 864 to 130975 of the buffer
-live at file offset 0xc04a00 of `amd_fidelityfx_upscaler_dx12.dll`, in 5 identical copies. No GPU
-readback and no host-visible heap trick are needed. Make sure that the block is the one the shaders
-index, because it differs between DLL builds.
-
-### How to decide per shader
-
-Do not decide from the source. pass6 has 128 loops in its source and ACO unrolls it completely, while
-pass7 keeps its loops. Decide from the compiled pipeline instead:
-
-1. Compile the original SPIR-V and the baked SPIR-V.
-2. Query both with `VK_KHR_pipeline_executable_properties`, which RADV supports on this card.
-3. Keep the variant with the lower instruction count, and drop the other pipeline.
-
-### What to cache
-
-Key the cache on the shader hash and a hash of the weight block. Store the winning SPIR-V and the
-decision. Later runs then load the cache and skip the bake. The first run pays one bake and two
-compiles per network shader. That is a one-time stutter. Do it during pipeline creation, not in the
-frame loop.
-
-### Why it generalizes
-
-The bake depends on the DLL build and the tensor size bucket, not on the game or the scene. The same
-cache therefore serves every game that ships this DLL. Scenes that use other tensor buckets, and
-other games, bring in shader variants this session never compiled, and each one gets the same test.
 
 ## Next steps
 
@@ -388,5 +353,5 @@ other games, bring in shader variants this session never compiled, and each one 
    `-Dc_args=-Wno-error=incompatible-pointer-types`.
 3. `/data/fsr4_tools/bench_pragmata.sh` is an old weston script. The repo script is at
    `/data/tmp/fsr4re/bench_pragmata.sh`.
-4. The game directory now holds the 4.1.1b DLL. Proton and the prefix hold the repo vkd3d-proton
-   DLLs. `OptiScaler.ini` is unchanged (md5 `fbabd2d609a907ae1a16bf510b4271b9`).
+4. The game directory holds the 4.1.1b DLL. Proton and the prefix hold the vkd3d-proton DLLs Proton
+   ships. `OptiScaler.ini` is unchanged (md5 `fbabd2d609a907ae1a16bf510b4271b9`).

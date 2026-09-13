@@ -9,7 +9,7 @@ Measured 2026-09-13 on an AMD RX 470 (Polaris10, GCN4), in Pragmata.
 ## Result
 
 Real gameplay, loaded from a save, upscaler on every frame. One identical scene, 100-second window,
-1280x720 upscaled to 1920x1080, `FSR4_DOT_MODE=i32`, FSR4 4.0.2 INT8 upscaler DLL.
+1280x720 upscaled to 1920x1080, FSR4 4.0.2 INT8 upscaler DLL.
 
 | run | driver | frames | mean ms | median ms | fps |
 |---|---|---:|---:|---:|---:|
@@ -22,23 +22,24 @@ with the patch: A and B differ by 0.36 percent, which is run-to-run noise.
 
 With FSR4 4.1.1 the patch makes frames 2.28 times faster. See `../fsr-4.0.2-vs-4.1.1/`.
 
-## Why upstream 26.2.2 does not reach the patch
+## Why Mesa's own lowering is not enough
 
-Upstream rewrites the lowering of `nir_op_sdot_4x8_iadd`, which exists only if a shader contains
-`OpSDot`. These shaders contain none. In `i32` mode, vkd3d-proton's `emit_i8_dot_instruction` emits
-the decomposition itself as `bfe` plus `OpIMul` plus `OpIAdd`, so NIR does not build that node. This
-patch matches the expanded form.
-
-Count the `OpSDot` instructions:
+Upstream rewrites the lowering of `nir_op_sdot_4x8_iadd`, the node NIR builds for `OpSDot`. FSR4's
+shaders do contain that instruction. vkd3d-proton compiles FSR4's `dot4add_i8packed` into `OpSDot`,
+4,264 of them across 13 shader modules. Count them in a SPIR-V dump:
 
 ```bash
-for f in data/spirv/*.spv; do spirv-dis --no-color "$f"; done | grep -cE "Op(SDot|UDot|SUDot)"
+for f in *.spv; do spirv-dis --no-color "$f"; done | grep -cE "Op(SDot|UDot|SUDot)"
 ```
 
-The count is zero.
+So the upstream lowering runs, and it helps. It still gives up 2.5 ms per frame against the layer's
+dot product rewrite. On an RX 570 in Pragmata, with the patched RADV in both runs and no shaders
+replaced:
 
-`FSR4_DOT_MODE=dot` emits `OpSDotKHR` and uses the upstream path. In the SDK sample, stock Mesa
-26.2.2 with `dot` comes within about 7 percent of this patch with `i32`.
+| who lowers the dot products | mean ms |
+|---|---:|
+| Mesa | 25.99 |
+| the layer's rewrite | 23.50 |
 
 ## Log evidence
 

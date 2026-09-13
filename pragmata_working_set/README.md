@@ -38,9 +38,6 @@ If `vulkaninfo | grep shaderFloat16` reports `true`, the file works.
 | frame generation | `amd_fidelityfx_framegeneration_dx12.dll` | `6a12bc4dc82ae11e81c37930b439f6c9` |
 | Vulkan | `amd_fidelityfx_vk.dll` | `9718fd774c61be1af6af411cf65394cd` |
 
-The patched vkd3d-proton (`d3d12.dll` and `d3d12core.dll`) must be in the Proton installation and in
-the prefix.
-
 ### 3. `OptiScaler.ini`
 
 Use `OptiScaler_pragmata.ini`. These keys are required:
@@ -53,17 +50,23 @@ Fsr4Update=true
 Fsr4ForceEnableInt8=true
 ```
 
-### 4. Environment
+### 4. Launch command
+
+Put this in the game's launch options, or in Heroic's wrapper command field:
 
 ```
-MESA_VK_DEVICE_SELECT=1002:67df
-WINEDLLOVERRIDES=dxgi=n
-FSR4_DOT_MODE=i32
-VK_DRIVER_FILES=<path to the patched radeon_icd.x86_64.json>
+VK_DRIVER_FILES=$HOME/.local/share/radv-fsr4/radeon_icd.x86_64.json \
+FSR4_SET=balanced /path/to/tools/fsr4_layer/fsr4-run %command%
 ```
 
-`MESA_VK_DEVICE_SELECT` picks the RX 470 on a machine with two AMD GPUs. If the patched
-`libvulkan_radeon.so` is the system driver, leave out `VK_DRIVER_FILES`.
+`fsr4-run` loads the Vulkan layer. The layer rewrites FSR4's packed dot products into the form the
+patched driver fuses, and swaps in the tuned shaders of the chosen set.
+
+`VK_DRIVER_FILES` points at the patched RADV. If the patched `libvulkan_radeon.so` is the system
+driver, leave it out.
+
+Two more variables belong in the same launch options. `WINEDLLOVERRIDES=dxgi=n` makes Wine load
+OptiScaler. `MESA_VK_DEVICE_SELECT=1002:67df` picks the RX 470 on a machine with two AMD GPUs.
 
 ## Confirm that FSR4 runs
 
@@ -76,7 +79,4 @@ A correct run shows `FSR31FeatureDx12` and `FSR4ModelSelection`, and no `FSR2Fea
 
 ## Notes
 
-- `FSR4_DOT_MODE` has no effect in this game. Its FSR4 shaders ship as DXBC that is already lowered
-  to scalar INT8 math, with no dot-product operations. The patched RADV fuses those scalar
-  multiplies, so the driver does all the work.
 - `VKD3D_SHADER_DUMP_PATH` writes nothing for this game.

@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """Build faster FSR4 shaders for this GPU and keep the ones that win.
 
-The tool works on the shaders a game really compiles, so run the game once with
-VKD3D_SHADER_DUMP_PATH set and point `capture` at that directory. It then produces variants of every
-network shader, times each one on this GPU, and writes the winners to a directory for
-VKD3D_SHADER_OVERRIDE.
+The tool works on the shaders a game really compiles, so run the game once with FSR4_LAYER_DUMP
+pointing at an empty directory, and point `capture` at that directory. It then produces variants of
+every network shader, times each one on this GPU, and writes the winners as a shader set that the
+layer can load.
 
 Stages:
   capture  <dump_dir> <weights.bin>   read the dumped SPIR-V, decompile it, and record the shader set
   generate [--modes ...]              write the variants
-  bench                               time every variant on this GPU
-  install  <out_dir> [--mode ...]     copy the chosen shaders into an override directory
+  bench    <dump_dir>                 time every variant on this GPU
+  install  <set_dir> [--mode ...]     write the chosen shaders as a set for the layer
+
+The layer names each dumped file after the SPIR-V it saw, and it looks a replacement up under that
+same name, so a set built this way needs no translation table.
 
 The output head is left alone by default: its errors feed the history buffer and grow into flicker.
 
@@ -87,7 +90,9 @@ def cmd_capture(a):
             "bx": int(b.group(1)) if b else None,
             "by": int(b.group(2)) if b else None,
             "macs": text.count("bitfieldExtract") // 2,
-            "kind": "head" if "(0u + (uint(bitfieldExtract" in text else "pass",
+            # The output head is the one that writes images. Every network pass writes a buffer.
+            # Its errors reach the history buffer the next frame reads, so it stays untouched.
+            "kind": "head" if "imageStore" in text else "pass",
         }
     if not shaders:
         sys.exit("no shaders with int8 multiply chains found in the dump")
@@ -196,6 +201,8 @@ def bench_one(spv, gx, gy, a):
 # --------------------------------------------------------------------------- install
 def cmd_install(a):
     st = load()
+    if not any("times" in info for info in st["shaders"].values()):
+        sys.exit("no timings yet, run bench first")
     os.makedirs(a.out_dir, exist_ok=True)
     n = 0
     for h, info in st["shaders"].items():
@@ -217,13 +224,14 @@ def cmd_install(a):
             n += 1
             print(f"{h}: {m}")
     print(f"\n{n} shaders written to {a.out_dir}")
-    print(f'run the game with VKD3D_SHADER_OVERRIDE="{os.path.abspath(a.out_dir)}"')
+    parent, name = os.path.split(os.path.abspath(a.out_dir.rstrip("/")))
+    print(f'\nrun the game with FSR4_SETS="{parent}" FSR4_SET={name}')
 
 
 p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 sub = p.add_subparsers(dest="cmd", required=True)
 
-c = sub.add_parser("capture", help="read a VKD3D_SHADER_DUMP_PATH directory")
+c = sub.add_parser("capture", help="read an FSR4_LAYER_DUMP directory")
 c.add_argument("dump_dir")
 c.add_argument("weights", help="the FSR4 weight block, see README")
 c.add_argument("--min-macs", type=int, default=2000)
@@ -241,8 +249,8 @@ c.add_argument("--runs", type=int, default=9)
 c.add_argument("--scratch-mb", type=int, default=192)
 c.set_defaults(fn=cmd_bench)
 
-c = sub.add_parser("install", help="copy the chosen shaders into an override directory")
-c.add_argument("out_dir")
+c = sub.add_parser("install", help="write the chosen shaders as a set for the layer")
+c.add_argument("out_dir", help="the set directory to create, for example ~/.local/share/fsr4/sets/mine")
 c.add_argument("--mode", default="best")
 c.add_argument("--margin", type=float, default=0.95, help="a variant must be at least this much faster")
 c.set_defaults(fn=cmd_install)

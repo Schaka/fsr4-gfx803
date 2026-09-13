@@ -10,7 +10,10 @@
  * dispatches on this card, keeps the fastest, and remembers the choice. See autotune.h.
  *
  * Environment:
- *   FSR4_LAYER_CACHE   directory that holds <spirv-hash>.spv. Default ~/.cache/fsr4_opt/spirv
+ *   FSR4_SET           name of a shader set, or off. Read from FSR4_SETS, or from
+ *                      ~/.local/share/fsr4/sets
+ *   FSR4_SETS          directory that holds the sets
+ *   FSR4_LAYER_CACHE   a directory of <spirv-hash>.spv, used when FSR4_SET is not given
  *   FSR4_LAYER_DUMP    directory to write every module to, named by its hash. Off by default.
  *   FSR4_LAYER_DEBUG   1 prints one line per module
  *   FSR4_AUTOTUNE      1 measures the variants and keeps the fastest. Off by default.
@@ -28,6 +31,7 @@
 #include <sys/stat.h>
 
 #include "autotune.h"
+#include "spv_sdot.c.inc"
 
 #ifndef VK_LAYER_EXPORT
 #define VK_LAYER_EXPORT __attribute__((visibility("default")))
@@ -92,9 +96,11 @@ static uint64_t module_hash(VkShaderModule module)
 
 static struct device_data g_devices[MAX_DEVICES];
 static char g_cache[512];
+static char g_keys_dir[512];
 static char g_dump[512];
 static int g_debug;
 static int g_autotune;
+static int g_expand_sdot;             /* set when the card has no packed dot product */
 static float g_timestamp_period = 1.0f;
 
 static void init_config(void)
@@ -103,11 +109,35 @@ static void init_config(void)
     if (done)
         return;
     done = 1;
+    /* A set name is enough: the layer reads the shaders straight out of the set directory, so it
+     * works as an implicit layer with nothing but FSR4_SET in the environment. */
+    const char *set = getenv("FSR4_SET");
+    const char *sets = getenv("FSR4_SETS");
     const char *c = getenv("FSR4_LAYER_CACHE");
-    if (c)
+    const char *home = getenv("HOME");
+
+    if (set && strcmp(set, "off")) {
+        static const struct { const char *alias, *real; } aliases[] = {
+            { "lossless", "exact" }, { "quality", "fin15" },
+            { "balanced", "fin25" }, { "speed", "prune16" },
+        };
+        for (unsigned i = 0; i < sizeof(aliases) / sizeof(aliases[0]); i++)
+            if (!strcmp(set, aliases[i].alias)) {
+                set = aliases[i].real;
+                break;
+            }
+        if (sets) {
+            snprintf(g_cache, sizeof(g_cache), "%s/%s", sets, set);
+            snprintf(g_keys_dir, sizeof(g_keys_dir), "%s", sets);
+        } else {
+            snprintf(g_cache, sizeof(g_cache), "%s/.local/share/fsr4/sets/%s", home ? home : "/tmp", set);
+            snprintf(g_keys_dir, sizeof(g_keys_dir), "%s/.local/share/fsr4/sets", home ? home : "/tmp");
+        }
+    } else if (c) {
         snprintf(g_cache, sizeof(g_cache), "%s", c);
-    else {
-        const char *home = getenv("HOME");
+    } else if (set) {
+        g_cache[0] = '\0';             /* FSR4_SET=off */
+    } else {
         snprintf(g_cache, sizeof(g_cache), "%s/.cache/fsr4_opt/spirv", home ? home : "/tmp");
     }
     const char *d = getenv("FSR4_LAYER_DUMP");
@@ -137,11 +167,41 @@ static struct device_data *device_data(VkDevice device)
     return NULL;
 }
 
+/* Sets are named after the shader they come from, which does not change between vkd3d builds. The
+ * hash the layer sees does change, so keys.txt maps one to the other, with a line per build. */
+static bool resolve_key(uint64_t hash, char *out, size_t n)
+{
+    char path[700];
+    snprintf(path, sizeof(path), "%s/keys.txt", g_keys_dir[0] ? g_keys_dir : g_cache);
+    FILE *f = fopen(path, "r");
+    if (!f)
+        return false;
+    char line[160];
+    bool found = false;
+    while (fgets(line, sizeof(line), f)) {
+        unsigned long long seen;
+        char name[64];
+        if (sscanf(line, "%llx %63s", &seen, name) == 2 && seen == (unsigned long long)hash) {
+            snprintf(out, n, "%s", name);
+            found = true;
+            break;
+        }
+    }
+    fclose(f);
+    return found;
+}
+
 /* Reads a replacement module. Returns NULL when there is none. */
 static uint32_t *load_replacement(uint64_t hash, size_t *out_size)
 {
     char path[700];
-    snprintf(path, sizeof(path), "%s/%016lx.spv", g_cache, (unsigned long)hash);
+    char name[64];
+    if (!g_cache[0])
+        return NULL;
+    if (resolve_key(hash, name, sizeof(name)))
+        snprintf(path, sizeof(path), "%s/%s.spv", g_cache, name);
+    else
+        snprintf(path, sizeof(path), "%s/%016lx.spv", g_cache, (unsigned long)hash);
     FILE *f = fopen(path, "rb");
     if (!f)
         return NULL;
@@ -160,6 +220,9 @@ static uint32_t *load_replacement(uint64_t hash, size_t *out_size)
     return NULL;
 }
 
+/* Writes the module under the name of the SPIR-V the game handed us, which is the name a
+ * replacement has to carry. The contents are what the driver would compile, so a dumped shader whose
+ * dot products were rewritten holds the rewritten form. That is what the tuner works on. */
 static void dump_module(uint64_t hash, const uint32_t *code, size_t size)
 {
     char path[700];
@@ -215,9 +278,6 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateComputePipelines(
             continue;
 
         uint64_t h = spirv_hash(m->pCode, m->codeSize);
-        if (g_dump[0])
-            dump_module(h, m->pCode, m->codeSize);
-
         if (dd->tune.enabled) {
             /* Build every variant, then let the game have the original handle. The bind hook puts
              * the variant under test into the frame. */
@@ -235,9 +295,16 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateComputePipelines(
 
         size_t size = 0;
         uint32_t *code = load_replacement(h, &size);
+        bool expanded = false;
+        if (!code && g_expand_sdot) {
+            code = spv_expand_sdot(m->pCode, m->codeSize, &size);
+            expanded = code != NULL;
+        }
+        if (g_dump[0])
+            dump_module(h, expanded ? code : m->pCode, expanded ? size : m->codeSize);
         if (g_debug)
             fprintf(stderr, "fsr4_layer: pipeline module %016lx, %zu bytes%s\n", (unsigned long)h,
-                    m->codeSize, code ? " -> replaced" : "");
+                    m->codeSize, code ? (expanded ? " -> dot product expanded" : " -> replaced") : "");
         if (!code)
             continue;
 
@@ -428,14 +495,18 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateShaderModule(
     init_config();
 
     uint64_t h = spirv_hash(info->pCode, info->codeSize);
-    if (g_dump[0])
-        dump_module(h, info->pCode, info->codeSize);
-
     size_t size = 0;
     uint32_t *code = load_replacement(h, &size);
+    bool expanded = false;
+    if (!code && g_expand_sdot) {
+        code = spv_expand_sdot(info->pCode, info->codeSize, &size);
+        expanded = code != NULL;
+    }
+    if (g_dump[0])
+        dump_module(h, expanded ? code : info->pCode, expanded ? size : info->codeSize);
     if (g_debug)
         fprintf(stderr, "fsr4_layer: module %016lx, %zu bytes%s\n", (unsigned long)h,
-                info->codeSize, code ? " -> replaced" : "");
+                info->codeSize, code ? (expanded ? " -> dot product expanded" : " -> replaced") : "");
 
     if (code) {
         VkShaderModuleCreateInfo patched = *info;
@@ -458,6 +529,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateShaderModule(
 }
 
 static PFN_vkGetInstanceProcAddr g_next_gipa;
+static VkInstance g_instance;
 
 static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateInstance(
         const VkInstanceCreateInfo *info, const VkAllocationCallbacks *alloc, VkInstance *instance)
@@ -474,7 +546,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateInstance(
     init_config();
 
     PFN_vkCreateInstance create = (PFN_vkCreateInstance)g_next_gipa(NULL, "vkCreateInstance");
-    return create(info, alloc, instance);
+    VkResult r = create(info, alloc, instance);
+    if (r == VK_SUCCESS)
+        g_instance = *instance;        /* physical-device queries need it */
+    return r;
 }
 
 static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateDevice(
@@ -493,11 +568,27 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateDevice(
     chain->u.pLayerInfo = chain->u.pLayerInfo->pNext;
 
     PFN_vkGetPhysicalDeviceProperties gpdp =
-            (PFN_vkGetPhysicalDeviceProperties)gipa(NULL, "vkGetPhysicalDeviceProperties");
+            (PFN_vkGetPhysicalDeviceProperties)gipa(g_instance, "vkGetPhysicalDeviceProperties");
     if (gpdp) {
         VkPhysicalDeviceProperties props;
         gpdp(physical_device, &props);
         g_timestamp_period = props.limits.timestampPeriod;
+    }
+
+    /* A card without a packed 4x8 dot product lowers OpSDot in software, which is slower than doing
+     * the four multiplies in 32 bits. Ask the device, rather than guessing from the model name. */
+    PFN_vkGetPhysicalDeviceProperties2 gpdp2 =
+            (PFN_vkGetPhysicalDeviceProperties2)gipa(g_instance, "vkGetPhysicalDeviceProperties2");
+    if (gpdp2 && !getenv("FSR4_NO_SDOT_EXPAND")) {
+        VkPhysicalDeviceShaderIntegerDotProductProperties dot = {
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_PROPERTIES
+        };
+        VkPhysicalDeviceProperties2 p2 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &dot };
+        gpdp2(physical_device, &p2);
+        g_expand_sdot = !dot.integerDotProduct4x8BitPackedSignedAccelerated;
+        if (g_debug)
+            fprintf(stderr, "fsr4_layer: packed 4x8 dot product accelerated: %s\n",
+                    dot.integerDotProduct4x8BitPackedSignedAccelerated ? "yes" : "no");
     }
 
     PFN_vkCreateDevice create = (PFN_vkCreateDevice)gipa(NULL, "vkCreateDevice");

@@ -14,7 +14,6 @@ Patched RADV lowers the int8 MAC path to full-rate 24-bit multiply-add.
 Reproduce:
 
     VK_DRIVER_FILES=/data/radv_custom/radeon_icd.x86_64.json \
-        FSR4_DOT_MODE=i32 \
         /data/fsr4_tools/bench_fsr4.sh i32 1 22
 
 ## Final results (mean of 60 frames, vsync off, floor 18.48 ms)
