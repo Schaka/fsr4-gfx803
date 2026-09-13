@@ -1,0 +1,79 @@
+label,dll_md5,frames,mean_ms,median_ms,min_ms,fps
+fsr402_patched,0ca99991ce3669d1d5320eb011aadb25,3294,30.44,30.31,7.38,32.9
+fsr411b_patched,15103d8c121636b1c3ef1184357b677e,3623,27.78,27.76,7.10,36.0
+fsr411b_stock,15103d8c121636b1c3ef1184357b677e,1593,63.35,63.35,15.00,15.8
+fsr411_patched,429d308876434a1247f40bd543efdddb,3670,27.32,27.32,7.63,36.6
+fsr402_patched_repeat,0ca99991ce3669d1d5320eb011aadb25,3316,30.32,30.20,7.20,33.0
+
+### fsr402_patched
+-- upscaler path (must be FSR31FeatureDx12, never FSR2FeatureDx12_212) --
+ 119766 FSR31FeatureDx12
+      4 FSR4ModelSelection
+-- render resolution --
+[08:22:05.205584] [D] FSR31FeatureDx12::Evaluate Input Resolution: 1280x720
+-- vsync (SyncInterval must be 0) --
+[08:22:05.195994] [D] LocalPresent SyncInterval: 0, Flags: 200, Frametime: 30.188 ms
+-- total frametime lines --
+10101
+
+### fsr411b_patched
+-- upscaler path (must be FSR31FeatureDx12, never FSR2FeatureDx12_212) --
+ 136386 FSR31FeatureDx12
+      4 FSR4ModelSelection
+-- render resolution --
+[08:26:51.563741] [D] FSR31FeatureDx12::Evaluate Input Resolution: 1280x720
+-- vsync (SyncInterval must be 0) --
+[08:26:51.554481] [D] LocalPresent SyncInterval: 0, Flags: 200, Frametime: 27.692 ms
+-- total frametime lines --
+11458
+
+### fsr411b_stock
+-- upscaler path (must be FSR31FeatureDx12, never FSR2FeatureDx12_212) --
+  55710 FSR31FeatureDx12
+      4 FSR4ModelSelection
+-- render resolution --
+[08:31:37.922725] [D] FSR31FeatureDx12::Evaluate Input Resolution: 1280x720
+-- vsync (SyncInterval must be 0) --
+[08:31:37.913813] [D] LocalPresent SyncInterval: 0, Flags: 200, Frametime: 63.274 ms
+-- total frametime lines --
+4729
+
+### fsr411_patched
+-- upscaler path (must be FSR31FeatureDx12, never FSR2FeatureDx12_212) --
+     10 AmdInt8Check
+ 139230 FSR31FeatureDx12
+      4 FSR4ModelSelection
+-- render resolution --
+[08:36:24.130582] [D] FSR31FeatureDx12::Evaluate Input Resolution: 1280x720
+-- vsync (SyncInterval must be 0) --
+[08:36:24.149099] [D] LocalPresent SyncInterval: 0, Flags: 200, Frametime: 27.332 ms
+-- total frametime lines --
+11695
+
+### fsr402_patched_repeat
+-- upscaler path (must be FSR31FeatureDx12, never FSR2FeatureDx12_212) --
+ 124614 FSR31FeatureDx12
+      4 FSR4ModelSelection
+-- render resolution --
+[08:41:10.434770] [D] FSR31FeatureDx12::Evaluate Input Resolution: 1280x720
+-- vsync (SyncInterval must be 0) --
+[08:41:10.425627] [D] LocalPresent SyncInterval: 0, Flags: 200, Frametime: 30.009 ms
+-- total frametime lines --
+10473
+
+=== fsr402_patched dll=0ca99991ce3669d1d5320eb011aadb25 icd=/data/radv_262/patched/radeon_icd.x86_64.json 08:17:18
+fsr402_patched: window 08:20:25..08:22:05
+fsr402_patched: fsr402_patched,3294,30.44,30.31,7.38,32.9
+=== fsr411b_patched dll=15103d8c121636b1c3ef1184357b677e icd=/data/radv_262/patched/radeon_icd.x86_64.json 08:22:05
+fsr411b_patched: window 08:25:11..08:26:51
+fsr411b_patched: fsr411b_patched,3623,27.78,27.76,7.10,36.0
+=== fsr411b_stock dll=15103d8c121636b1c3ef1184357b677e icd=/data/radv_262/stock/radeon_icd.x86_64.json 08:26:51
+fsr411b_stock: window 08:29:57..08:31:37
+fsr411b_stock: fsr411b_stock,1593,63.35,63.35,15.00,15.8
+=== fsr411_patched dll=429d308876434a1247f40bd543efdddb icd=/data/radv_262/patched/radeon_icd.x86_64.json 08:31:38
+fsr411_patched: window 08:34:44..08:36:24
+fsr411_patched: fsr411_patched,3670,27.32,27.32,7.63,36.6
+=== fsr402_patched_repeat dll=0ca99991ce3669d1d5320eb011aadb25 icd=/data/radv_262/patched/radeon_icd.x86_64.json 08:36:24
+fsr402_patched_repeat: window 08:39:30..08:41:10
+fsr402_patched_repeat: fsr402_patched_repeat,3316,30.32,30.20,7.20,33.0
+=== done 08:41:10

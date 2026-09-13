@@ -1,0 +1,70 @@
+diff --git a/src/compiler/nir/nir_opt_algebraic.py b/src/compiler/nir/nir_opt_algebraic.py
+index fd5c6bf0..7aef5f48 100644
+--- a/src/compiler/nir/nir_opt_algebraic.py
++++ b/src/compiler/nir/nir_opt_algebraic.py
+@@ -2836,6 +2836,26 @@ optimizations.extend([
+     '!options->has_umad24'),
+ 
+    # Relaxed 24bit ops
++   # FSR4-on-GCN4: when a driver lacks hardware dp4a, the sdot_4x8/udot_4x8 rules above expand the
++   # dot product into scalar extract_i8/imul/iadd. Those multiplies are provably 8-bit-ranged, so on
++   # hardware with full-rate 24-bit multiply-add (all of GCN) they can use the 24-bit form, which
++   # fuses into a single v_mad_i32_i24 with a 32-bit accumulator instead of a separate multiply and
++   # add. Exact for 8-bit operands; halves the instruction count of the int8 MAC path.
++   (('imul@32', ('extract_i8', 'a@32', b), ('extract_i8', 'c@32', d)),
++    ('imul24_relaxed', ('extract_i8', 'a@32', b), ('extract_i8', 'c@32', d)),
++    'options->has_mul24_relaxed'),
++   (('imul@32', ('extract_u8', 'a@32', b), ('extract_u8', 'c@32', d)),
++    ('umul24_relaxed', ('extract_u8', 'a@32', b), ('extract_u8', 'c@32', d)),
++    'options->has_mul24_relaxed'),
++   # Same, but the other operand's byte-extract was constant-folded (e.g. weights baked into the
++   # instruction stream as immediates): the folded literal is in int8 range, so trivially in
++   # signed/unsigned 24-bit range, and imul24/umul24 stay exact for the 8-bit other operand.
++   (('imul@32', ('extract_i8', 'a@32', b), '#c(is_s24)'),
++    ('imul24_relaxed', ('extract_i8', 'a@32', b), 'c'),
++    'options->has_mul24_relaxed'),
++   (('imul@32', ('extract_u8', 'a@32', b), '#c(is_u24)'),
++    ('umul24_relaxed', ('extract_u8', 'a@32', b), 'c'),
++    'options->has_mul24_relaxed'),
+    (('imul24_relaxed', a, b), ('imul24', a, b), '!options->has_mul24_relaxed && options->has_imul24'),
+    (('imul24_relaxed', a, b), ('imul', a, b), '!options->has_mul24_relaxed && !options->has_imul24'),
+    (('umad24_relaxed', a, b, c), ('umad24', a, b, c),  'options->has_umad24'),
+diff --git a/src/compiler/nir/nir_search_helpers.h b/src/compiler/nir/nir_search_helpers.h
+index d1fd6de6..09fd9c49 100644
+--- a/src/compiler/nir/nir_search_helpers.h
++++ b/src/compiler/nir/nir_search_helpers.h
+@@ -257,6 +257,34 @@ is_ult_32(UNUSED const nir_search_state *state, const nir_alu_instr *instr,
+    return is_ult(instr, src, num_components, swizzle, 32);
+ }
+ 
++/** Is value a constant that fits in signed 24 bits? */
++static inline bool
++is_s24(UNUSED const nir_search_state *state, const nir_alu_instr *instr,
++       unsigned src, unsigned num_components,
++       const uint8_t *swizzle)
++{
++   /* only constant srcs: */
++   if (!nir_src_is_const(instr->src[src].src))
++      return false;
++
++   for (unsigned i = 0; i < num_components; i++) {
++      const int64_t val = nir_src_comp_as_int(instr->src[src].src, swizzle[i]);
++      if (val < INT64_C(-8388608) || val > INT64_C(8388607))
++         return false;
++   }
++
++   return true;
++}
++
++/** Is value a constant that fits in unsigned 24 bits? */
++static inline bool
++is_u24(UNUSED const nir_search_state *state, const nir_alu_instr *instr,
++       unsigned src, unsigned num_components,
++       const uint8_t *swizzle)
++{
++   return is_ult(instr, src, num_components, swizzle, 0x1000000u);
++}
++
+ /** Is value unsigned less than 0xfffc07fc? */
+ static inline bool
+ is_ult_0xfffc07fc(UNUSED const nir_search_state *state, const nir_alu_instr *instr,

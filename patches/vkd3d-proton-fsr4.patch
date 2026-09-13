@@ -1,0 +1,214 @@
+diff --git a/libs/vkd3d/command.c b/libs/vkd3d/command.c
+index 611e373b..036f4a69 100644
+--- a/libs/vkd3d/command.c
++++ b/libs/vkd3d/command.c
+@@ -9485,6 +9485,42 @@ static void d3d12_command_list_check_compute_barrier(struct d3d12_command_list *
+             list->device, list->cmd.vk_command_buffer);
+ }
+ 
++/* FSR4DEBUG: registry of weight-sized buffers forced into host-visible memory by
++ * FSR4_FORCE_HOST_WEIGHTS (see d3d12_device_CreateCommittedResource1). They are produced on-GPU by
++ * FSR4's setup dispatches, so we snapshot them once the frame loop is well underway. */
++#define VKD3D_FSR4_MAX_HOSTBUF 4096
++static struct { void *cpu; uint64_t size; } vkd3d_fsr4_hostbufs[VKD3D_FSR4_MAX_HOSTBUF];
++static unsigned vkd3d_fsr4_hostbuf_count;
++
++void vkd3d_fsr4_register_hostbuf(void *cpu, uint64_t size);
++void vkd3d_fsr4_register_hostbuf(void *cpu, uint64_t size)
++{
++    if (!cpu || vkd3d_fsr4_hostbuf_count >= VKD3D_FSR4_MAX_HOSTBUF)
++        return;
++    vkd3d_fsr4_hostbufs[vkd3d_fsr4_hostbuf_count].cpu = cpu;
++    vkd3d_fsr4_hostbufs[vkd3d_fsr4_hostbuf_count].size = size;
++    vkd3d_fsr4_hostbuf_count++;
++}
++
++static void vkd3d_fsr4_dump_hostbufs(void)
++{
++    unsigned i;
++    char path[300];
++    FILE *f;
++    for (i = 0; i < vkd3d_fsr4_hostbuf_count; i++)
++    {
++        uint64_t n = vkd3d_fsr4_hostbufs[i].size;
++        uint64_t cap = n > (8ull << 20) ? (8ull << 20) : n;
++        snprintf(path, sizeof(path), "Z:/data/tmp/wdump/%04u_n%llu.bin", i, (unsigned long long)n);
++        if ((f = fopen(path, "wb")))
++        {
++            fwrite(vkd3d_fsr4_hostbufs[i].cpu, 1, (size_t)cap, f);
++            fclose(f);
++        }
++    }
++    ERR("FSR4DEBUG dumped %u host-visible buffers\n", vkd3d_fsr4_hostbuf_count);
++}
++
+ static void STDMETHODCALLTYPE d3d12_command_list_Dispatch(d3d12_command_list_iface *iface,
+         UINT x, UINT y, UINT z)
+ {
+@@ -9494,6 +9530,20 @@ static void STDMETHODCALLTYPE d3d12_command_list_Dispatch(d3d12_command_list_ifa
+     const VkPhysicalDeviceLimits *limits;
+ 
+     TRACE("iface %p, x %u, y %u, z %u.\n", iface, x, y, z);
++    {
++        static int en = -1;
++        static unsigned fsr4debug_count = 0;
++        if (en < 0) en = getenv("FSR4_TRACE_DISPATCH") ? 1 : 0;
++        if (en) { fsr4debug_count++; ERR("FSR4DEBUG Dispatch #%u (%u x %u x %u)\n", fsr4debug_count, x, y, z); }
++    }
++
++    {
++        static int en = -1;
++        static unsigned n = 0;
++        if (en < 0) en = getenv("FSR4_FORCE_HOST_WEIGHTS") ? 1 : 0;
++        if (en && ++n == (getenv("FSR4_HOST_BIG") ? 1500u : 4000u))
++            vkd3d_fsr4_dump_hostbufs();
++    }
+ 
+     d3d12_command_list_check_render_pass_validation(list, "Dispatch called within a render pass.\n", true);
+     d3d12_command_list_flush_dgc_batch(list);
+@@ -9584,6 +9634,34 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyBufferRegion(d3d12_command_
+     d3d12_command_list_track_resource_usage(list, dst_resource, true);
+     d3d12_command_list_track_resource_usage(list, src_resource, true);
+ 
++    /* FSR4DEBUG: dump CPU-visible upload sources feeding buffer copies. FSR4's weights land in
++     * ~197 small DEFAULT-heap buffers (~1.3 MB total); if they arrive via an UPLOAD heap then the
++     * source is host-visible here and can be read directly, with no GPU readback plumbing.
++     * d3d12_resource_Map returns mem.cpu_address verbatim, so the bytes are at cpu_address+src_offset. */
++    {
++        static int enabled = -1;
++        static unsigned dumpn = 0;
++        if (enabled < 0) enabled = getenv("FSR4_DUMP_COPIES") ? 1 : 0;
++        if (enabled && dumpn < 400 && src_resource->mem.cpu_address && byte_count && byte_count <= (4ull << 20))
++        {
++            const unsigned char *p = (const unsigned char *)src_resource->mem.cpu_address + src_offset;
++            char path[300];
++            FILE *f;
++            dumpn++;
++            snprintf(path, sizeof(path), "Z:/data/tmp/ssbo_dump/%03u_dst%llu_n%llu.bin",
++                     dumpn, (unsigned long long)dst_resource->desc.Width,
++                     (unsigned long long)byte_count);
++            if ((f = fopen(path, "wb")))
++            {
++                fwrite(p, 1, (size_t)byte_count, f);
++                fclose(f);
++            }
++            ERR("FSR4DEBUG copybuf #%u dst_size=%llu bytes=%llu dst_heap=%u\n", dumpn,
++                (unsigned long long)dst_resource->desc.Width, (unsigned long long)byte_count,
++                (unsigned)dst_resource->heap_properties.Type);
++        }
++    }
++
+     d3d12_command_list_end_current_render_pass(list, true);
+     d3d12_command_list_end_transfer_batch(list);
+ 
+diff --git a/libs/vkd3d/device.c b/libs/vkd3d/device.c
+index f6db6954..df31de16 100644
+--- a/libs/vkd3d/device.c
++++ b/libs/vkd3d/device.c
+@@ -29,6 +29,9 @@
+ #include "vkd3d_renderdoc.h"
+ #endif
+ 
++/* FSR4DEBUG: defined in command.c */
++void vkd3d_fsr4_register_hostbuf(void *cpu, uint64_t size);
++
+ static uint32_t vkd3d_get_vk_version(void)
+ {
+     int major, minor, patch;
+@@ -8560,8 +8563,65 @@ static HRESULT STDMETHODCALLTYPE d3d12_device_CreateCommittedResource1(d3d12_dev
+ 
+     d3d12_resource_promote_desc(desc, &desc1);
+ 
+-    return d3d12_device_CreateCommittedResource2(iface, heap_properties, heap_flags, &desc1,
+-            initial_state, optimized_clear_value, protected_session, iid, resource);
++    /* FSR4DEBUG: inventory of committed resources. Buffer sizes distinguish an im2col-expanded
++     * activation tensor (~9x the raw feature map, => the layer is a 3x3 conv and Winograd applies)
++     * from a plain 1x1 conv / matmul input. Dimension 1 == D3D12_RESOURCE_DIMENSION_BUFFER. */
++    {
++        static unsigned n = 0;
++        if (n < 400)
++        {
++            n++;
++            ERR("FSR4DEBUG res #%u dim=%u w=%llu h=%u depth=%u mips=%u fmt=%u flags=%#x heaptype=%u\n",
++                n, (unsigned)desc->Dimension, (unsigned long long)desc->Width, desc->Height,
++                desc->DepthOrArraySize, desc->MipLevels, (unsigned)desc->Format,
++                (unsigned)desc->Flags, heap_properties ? (unsigned)heap_properties->Type : 0u);
++        }
++    }
++
++    {
++        HRESULT hr_probe;
++        D3D12_HEAP_PROPERTIES forced_props;
++        /* FSR4DEBUG weight extraction: DEFAULT-heap buffers are device-local on this small-BAR box
++         * (probe: cpu_address NULL for 0/2450), so their contents cannot be read back without GPU
++         * plumbing. With FSR4_FORCE_HOST_WEIGHTS=1 we place weight-sized DEFAULT buffers in a CUSTOM
++         * heap backed by host-visible system memory (L0 / WRITE_BACK) instead, which makes
++         * mem.cpu_address valid so they can simply be memcpy'd out. Debug only -- it moves those
++         * buffers off VRAM and will cost performance. */
++        D3D12_HEAP_TYPE orig_type = heap_properties ? heap_properties->Type : D3D12_HEAP_TYPE_DEFAULT;
++        static int force_host = -1;
++        if (force_host < 0)
++            force_host = getenv("FSR4_FORCE_HOST_WEIGHTS") ? 1 : 0;
++        if (force_host && heap_properties && heap_properties->Type == D3D12_HEAP_TYPE_DEFAULT &&
++            desc->Dimension == D3D12_RESOURCE_DIMENSION_BUFFER &&
++            desc->Width >= 4096 &&
++            desc->Width <= (getenv("FSR4_HOST_BIG") ? (128ull << 20) : 262144ull))
++        {
++            forced_props = *heap_properties;
++            forced_props.Type = D3D12_HEAP_TYPE_CUSTOM;
++            forced_props.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
++            forced_props.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
++            heap_properties = &forced_props;
++        }
++
++        hr_probe = d3d12_device_CreateCommittedResource2(iface, heap_properties, heap_flags, &desc1,
++                initial_state, optimized_clear_value, protected_session, iid, resource);
++        /* FSR4DEBUG: is a DEFAULT-heap buffer host-visible on this driver? If cpu_address is
++         * non-NULL we can read weight buffers directly with a memcpy instead of GPU readback. */
++        if (SUCCEEDED(hr_probe) && resource && *resource &&
++            desc->Dimension == D3D12_RESOURCE_DIMENSION_BUFFER &&
++            orig_type == D3D12_HEAP_TYPE_DEFAULT)
++        {
++            struct d3d12_resource *r = impl_from_ID3D12Resource((ID3D12Resource *)*resource);
++            static unsigned probed = 0, visible = 0;
++            probed++;
++            if (r->mem.cpu_address) visible++;
++            if (probed <= 3 || probed % 200 == 0)
++                ERR("FSR4DEBUG defaultbuf probe #%u size=%llu cpu_address=%p (host-visible so far: %u/%u)\n",
++                    probed, (unsigned long long)desc->Width, r->mem.cpu_address, visible, probed);
++            vkd3d_fsr4_register_hostbuf(r->mem.cpu_address, (uint64_t)desc->Width);
++        }
++        return hr_probe;
++    }
+ }
+ 
+ static HRESULT STDMETHODCALLTYPE d3d12_device_CreateHeap1(d3d12_device_iface *iface,
+@@ -9826,6 +9886,14 @@ static D3D12_TILED_RESOURCES_TIER d3d12_device_determine_tiled_resources_tier(st
+     const VkPhysicalDeviceSparseProperties *sparse_properties = &device->device_info.properties2.properties.sparseProperties;
+     const VkPhysicalDeviceFeatures *features = &device->device_info.features2.features;
+ 
++    ERR("FSR4DEBUG tiled_tier sparseBinding=%d sparseResidencyAliased=%d sparseResidencyBuffer=%d "
++        "sparseResidencyImage2D=%d residencyStandard2DBlockShape=%d sparse_qf=%p sparse_qf_count=%u\n",
++        (int)features->sparseBinding, (int)features->sparseResidencyAliased,
++        (int)features->sparseResidencyBuffer, (int)features->sparseResidencyImage2D,
++        (int)sparse_properties->residencyStandard2DBlockShape,
++        (void*)device->queue_families[VKD3D_QUEUE_FAMILY_SPARSE_BINDING],
++        device->queue_families[VKD3D_QUEUE_FAMILY_SPARSE_BINDING] ? device->queue_families[VKD3D_QUEUE_FAMILY_SPARSE_BINDING]->queue_count : 0);
++
+     if (!features->sparseBinding || !features->sparseResidencyAliased ||
+             !features->sparseResidencyBuffer || !features->sparseResidencyImage2D ||
+             !sparse_properties->residencyStandard2DBlockShape ||
+@@ -10562,6 +10630,13 @@ static void d3d12_device_caps_init_feature_level(struct d3d12_device *device)
+         caps->max_feature_level = D3D_FEATURE_LEVEL_12_2;
+ 
+     TRACE("Max feature level: %#x.\n", caps->max_feature_level);
++    ERR("FSR4DEBUG max_feature_level=%#x OutputMergerLogicOp=%d vertexPipelineStoresAndAtomics=%d "
++        "maxUAV=%u maxUAVimg=%u TiledResourcesTier=%d ResourceBindingTier=%d TypedUAVLoadAdditionalFormats=%d "
++        "ROVsSupported=%d ConservativeRasterizationTier=%d\n",
++        caps->max_feature_level, caps->options.OutputMergerLogicOp, features->vertexPipelineStoresAndAtomics,
++        vk_info->device_limits.maxPerStageDescriptorStorageBuffers, vk_info->device_limits.maxPerStageDescriptorStorageImages,
++        caps->options.TiledResourcesTier, caps->options.ResourceBindingTier, caps->options.TypedUAVLoadAdditionalFormats,
++        caps->options.ROVsSupported, caps->options.ConservativeRasterizationTier);
+ 
+     if (caps->max_feature_level >= D3D_FEATURE_LEVEL_12_2)
+         INFO("DX Ultimate supported!\n");

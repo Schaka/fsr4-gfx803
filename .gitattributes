@@ -1,0 +1,13 @@
+# Preserve byte-exact line endings for files that are consumed by Windows tooling
+# or are compared by checksum.
+*.ini   -text
+*.conf  -text
+*.csv   -text
+*.spv   binary
+*.gz    binary
+
+# The test kit is a byte-exact copy of a working deployment. Do not rewrite
+# line endings in anything inside it, or checksums stop matching.
+testkit/** -text
+*.hlsl  -text
+*.res   binary

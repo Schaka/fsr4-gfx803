@@ -1,0 +1,38 @@
+=== i32 ===
+  65089 v_mad_i32_i24
+  40485 v_add_u32_e32
+  32896 s_bfe_i32
+  19451 v_mul_lo_u32
+  16468 s_ashr_i32
+  16448 s_sext_i32_i8
+   9890 v_lshlrev_b32_e32
+   9811 v_mul_f32_e32
+   6246 v_mov_b32_e32
+   5941 s_waitcnt
+   5850 v_sub_u32_e32
+   4391 v_mac_f32_e32
+   3786 v_add_f32_e32
+   2609 s_movk_i32
+--- total VALU:
+202235
+--- total SALU:
+96491
+=== dot ===
+  72861 v_add_u32_e32
+  32897 v_mad_i32_i24
+  32896 v_mul_i32_i24_e32
+  32896 s_bfe_i32
+  19405 v_mul_lo_u32
+  16468 s_ashr_i32
+  16448 s_sext_i32_i8
+   9942 v_lshlrev_b32_e32
+   9811 v_mul_f32_e32
+   6310 v_mov_b32_e32
+   6291 s_waitcnt
+   5814 v_sub_u32_e32
+   4391 v_mac_f32_e32
+   3786 v_add_f32_e32
+--- total VALU:
+234510
+--- total SALU:
+96687

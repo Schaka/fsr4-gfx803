@@ -1,0 +1,71 @@
+#version 450
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+// Winograd F(2x2, 3x3): 4 outputs from 16 element-wise multiplies instead of 36 direct MACs,
+// paid for with input/output transforms that are pure adds/subs.
+// Weight transform is assumed precomputed (weights are effectively constant per layer).
+// Intermediates are int16: the input transform sums up to 4 int8 terms so it does not fit in int8.
+layout(local_size_x = 256) in;
+layout(std430, binding = 0) readonly buffer InA { uint a[]; };
+layout(std430, binding = 1) readonly buffer InB { uint b[]; };
+layout(std430, binding = 2) writeonly buffer Out { int outv[]; };
+layout(push_constant) uniform PC { uint iterations; } pc;
+
+int16_t bs(uint p, uint l) { int v = int((p >> (l*8u)) & 0xFFu); return int16_t((v << 24) >> 24); }
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    uint pa = a[idx], pb = b[idx];
+    int acc = 0;
+    for (uint it = 0u; it < pc.iterations; ++it) {
+        uint xa = pa ^ it;
+        uint xb = pb ^ (it * 2654435761u);
+
+        // ---- 4x4 input tile, synthesised from the packed bytes
+        int16_t d[16];
+        for (int i = 0; i < 16; ++i) d[i] = bs(xa, uint(i & 3));
+        // ---- transformed weights (precomputed in a real implementation)
+        int16_t g[16];
+        for (int i = 0; i < 16; ++i) g[i] = bs(xb, uint(i & 3));
+
+        // ---- input transform  B^T d B : rows then cols, 4 adds/subs each => 32 ops
+        int16_t t[16];
+        for (int r = 0; r < 4; ++r) {
+            int b0 = r*4;
+            t[b0+0] = int16_t(d[b0+0] - d[b0+2]);
+            t[b0+1] = int16_t(d[b0+1] + d[b0+2]);
+            t[b0+2] = int16_t(d[b0+2] - d[b0+1]);
+            t[b0+3] = int16_t(d[b0+1] - d[b0+3]);
+        }
+        int16_t v[16];
+        for (int c = 0; c < 4; ++c) {
+            v[0*4+c] = int16_t(t[0*4+c] - t[2*4+c]);
+            v[1*4+c] = int16_t(t[1*4+c] + t[2*4+c]);
+            v[2*4+c] = int16_t(t[2*4+c] - t[1*4+c]);
+            v[3*4+c] = int16_t(t[1*4+c] - t[3*4+c]);
+        }
+
+        // ---- per-channel: 16 element-wise multiply-accumulates (the whole point of Winograd).
+        // The input transform above is done ONCE and reused across all channels.
+        int m32[16];
+        for (int i = 0; i < 16; ++i) m32[i] = 0;
+        for (int ch = 0; ch < 8; ++ch) {
+            int gc = int(g[ch & 15]) + ch;
+            for (int i = 0; i < 16; ++i) m32[i] += int(v[i]) * gc;
+        }
+        int16_t m[16];
+        for (int i = 0; i < 16; ++i) m[i] = int16_t(m32[i] >> 8);
+
+        // ---- output transform A^T m A -> 2x2, ~24 adds
+        int16_t u[8];
+        for (int c = 0; c < 4; ++c) {
+            u[0*4+c] = int16_t(m[0*4+c] + m[1*4+c] + m[2*4+c]);
+            u[1*4+c] = int16_t(m[1*4+c] - m[2*4+c] - m[3*4+c]);
+        }
+        for (int r = 0; r < 2; ++r) {
+            int b0 = r*4;
+            acc += int(int16_t(u[b0+0] + u[b0+1] + u[b0+2]));
+            acc += int(int16_t(u[b0+1] - u[b0+2] - u[b0+3]));
+        }
+    }
+    outv[idx] = acc;
+}

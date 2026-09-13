@@ -1,0 +1,83 @@
+# ---------------------------------------------------------------------------
+# Broad ignores first. Explicit re-includes come last, because the last
+# matching rule wins.
+# ---------------------------------------------------------------------------
+
+# Large external source trees. Rebuild them from the patches in patches/.
+mesa-src/
+mesa-262/
+mesa-262-patched/
+vkd3d-proton-build/
+dxil-spirv-src/
+optiscaler_src/
+
+# Local working directories from earlier sessions. Nothing in them is needed.
+dlls/
+saved_builds/
+fginterp_patch/
+local_control_test/
+optiscaler_079/
+local_control_prefix/
+local_fsr_repo/
+fsr4_402c_extract/
+fsr4_guide_extract/
+llama_test/
+data/FSR4.GUIDE.zip
+data/amd_fidelityfx_upscaler_dx12.dll
+
+# Bulk run output. Regenerate with tools/collect_data.sh.
+logs/
+shaderdump/
+local_bench_out/
+dp4a_bench/
+
+# Build products and archives anywhere.
+*.dll
+*.exe
+*.pdb
+*.so
+*.o
+*.7z
+*.zip
+*.tar.gz
+*.tar.xz
+build.*/
+
+# Operational handoff stays local: it describes the specific test machine.
+HANDOFF.md
+
+# Screenshots captured through the headless compositor came out incoherent and are
+# not trustworthy evidence. Do not commit them.
+*.png
+*.jpg
+*.jpeg
+
+# ---------------------------------------------------------------------------
+# Re-included binaries. Every one is described in CHECKSUMS.md.
+# ---------------------------------------------------------------------------
+!radv/*/libvulkan_radeon.so
+!vkd3d-proton/d3d12.dll
+!vkd3d-proton/d3d12core.dll
+!proxies/fg_passthrough_proxy.dll
+!sdk_sample/patched/FidelityFX_FSR.exe
+!sdk_sample/patched/FidelityFX_FSR.pdb
+!sdk_sample/stock/FidelityFX_FSR.exe
+!fsr4_dlls/**
+!testkit/**
+
+# testkit/assemble.sh copies these in from elsewhere in the repo. Do not track the copies.
+testkit/**/FidelityFX_FSR.exe
+testkit/**/amd_fidelityfx_dx12.dll
+testkit/**/amd_fidelityfx_loader_dx12.dll
+testkit/**/amd_fidelityfx_upscaler_dx12.dll
+testkit/**/amd_fidelityfx_framegeneration_dx12.dll*
+# Run output that regenerates on every launch.
+testkit/**/*.log
+testkit/**/vkd3d-proton.cache*
+testkit/**/imgui.ini
+
+# The one photo in the README. It was taken of a real monitor, not captured headless.
+!docs/pragmata-fsr4-411-rx480.jpeg
+
+# Local archive of the working log and unused experiments. Not part of the repository.
+archive_local/

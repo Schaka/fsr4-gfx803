@@ -1,0 +1,7 @@
+   3786 v_add_f32_e32
+   7123 v_add_u32_e32
+   4391 v_mac_f32_e32
+  93736 v_mad_i32_i24
+   9811 v_mul_f32_e32
+   1208 v_mul_i32_i24_e32
+total VALU: 172313 total SALU: 96287
