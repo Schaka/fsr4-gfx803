@@ -1,0 +1,69 @@
+#!/bin/bash
+# Run a game with tuned FSR4 shaders.
+#
+# Steam:   put this in the launch options of the game
+#              /path/to/fsr4-run %command%
+# Heroic:  Settings, Advanced, Wrapper command, add
+#              /path/to/fsr4-run
+# Anything else: just put it in front of the command.
+#
+# Environment:
+#   FSR4_SET      which shader set to use. Default: balanced
+#                 quality    the network passes at a tight error budget, hard to tell from stock
+#                 balanced   a mixed set, clearly faster, very close to stock
+#                 speed      a mixed set with pruning, fastest, visibly softer
+#                 off        change nothing
+#   FSR4_SETS     directory holding the sets. Default: the sets/ next to this script
+#   FSR4_LAYER    directory holding libfsr4_layer.so and fsr4_layer.json. Default: next to this script
+#   FSR4_CACHE    where the layer looks for shaders. Default ~/.cache/fsr4_opt/spirv
+#   FSR4_DEBUG    1 prints one line per replaced shader
+#
+# The layer only replaces shaders it has a tuned version of, and falls back to the game's own
+# whenever the driver rejects one, so a wrong set cannot break a game.
+set -u
+HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+SET=${FSR4_SET:-balanced}
+SETS=${FSR4_SETS:-$HERE/sets}
+LAYER=${FSR4_LAYER:-$HERE}
+CACHE=${FSR4_CACHE:-$HOME/.cache/fsr4_opt/spirv}
+
+if [ "$SET" = off ] || [ $# -eq 0 ]; then
+    exec "$@"
+fi
+
+if [ ! -d "$SETS/$SET" ]; then
+    echo "fsr4-run: no set '$SET' in $SETS. Available: $(ls "$SETS" 2>/dev/null | tr '\n' ' ')" >&2
+    exec "$@"
+fi
+
+mkdir -p "$CACHE"
+rm -f "$CACHE"/*.spv
+cp "$SETS/$SET"/*.spv "$CACHE"/ 2>/dev/null
+echo "fsr4-run: set '$SET', $(ls "$CACHE" | wc -l) shaders" >&2
+
+if [ ! -f "$LAYER/libfsr4_layer.so" ]; then
+    echo "fsr4-run: $LAYER/libfsr4_layer.so is missing. Build it with:" >&2
+    echo "  gcc -O2 -fPIC -shared -o $LAYER/libfsr4_layer.so $LAYER/fsr4_layer.c -lpthread" >&2
+    exec "$@"
+fi
+
+# The loader resolves library_path relative to the json, and some loaders only accept an absolute
+# path, so write a manifest that carries one.
+MANIFEST=$(mktemp -d)
+sed "s|\"library_path\":.*|\"library_path\": \"$LAYER/libfsr4_layer.so\",|" \
+    "$LAYER/fsr4_layer.json" > "$MANIFEST/fsr4_layer.json"
+
+export VK_LAYER_PATH="$MANIFEST"
+export VK_INSTANCE_LAYERS=VK_LAYER_FSR4_tune
+export FSR4_LAYER_CACHE="$CACHE"
+[ "${FSR4_DEBUG:-0}" = 1 ] && export FSR4_LAYER_DEBUG=1
+
+# vkd3d-proton serves pipelines from its own cache without ever handing SPIR-V to the driver, and the
+# layer can only replace what it sees, so that path has to be switched off.
+if [ -n "${VKD3D_CONFIG:-}" ]; then
+    export VKD3D_CONFIG="$VKD3D_CONFIG,pipeline_library_ignore_spirv"
+else
+    export VKD3D_CONFIG=pipeline_library_ignore_spirv
+fi
+
+exec "$@"

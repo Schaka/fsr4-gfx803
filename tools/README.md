@@ -16,6 +16,11 @@ They contain the test machine's own paths, for example the Pragmata prefix under
 | `bench_pragmata_dll_matrix.sh` | Runs `bench_pragmata.sh` once per upscaler DLL and driver pair and writes `matrix.csv`. |
 | `build_proxies.sh` | Runs on the workstation, not the test machine. Builds the frame-generation passthrough proxy in `../proxies/`. |
 
+| `fsr4_layer/` | The Vulkan layer that swaps FSR4's shaders, and the launcher users put in front of a game. See its README. |
+| `fsr4_tune/` | Builds shader variants, times them on the card it runs on, and keeps the winners. See its README. |
+
+The two directories above are for everyone. The scripts in the table are for this test machine only.
+
 `../notes/HEADLESS_GAME.md` explains why the game needs sway and a virtual gamepad.
 
 ## Process matching

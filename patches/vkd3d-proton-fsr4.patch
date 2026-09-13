@@ -1,8 +1,8 @@
 diff --git a/libs/vkd3d/command.c b/libs/vkd3d/command.c
-index 611e373b..036f4a69 100644
+index 611e373b..af50035c 100644
 --- a/libs/vkd3d/command.c
 +++ b/libs/vkd3d/command.c
-@@ -9485,6 +9485,42 @@ static void d3d12_command_list_check_compute_barrier(struct d3d12_command_list *
+@@ -9485,6 +9485,44 @@ static void d3d12_command_list_check_compute_barrier(struct d3d12_command_list *
              list->device, list->cmd.vk_command_buffer);
  }
  
@@ -31,8 +31,10 @@ index 611e373b..036f4a69 100644
 +    for (i = 0; i < vkd3d_fsr4_hostbuf_count; i++)
 +    {
 +        uint64_t n = vkd3d_fsr4_hostbufs[i].size;
-+        uint64_t cap = n > (8ull << 20) ? (8ull << 20) : n;
-+        snprintf(path, sizeof(path), "Z:/data/tmp/wdump/%04u_n%llu.bin", i, (unsigned long long)n);
++        uint64_t limit = getenv("FSR4_DUMP_CAP") ? (uint64_t)atoi(getenv("FSR4_DUMP_CAP")) << 20 : (8ull << 20);
++        uint64_t cap = n > limit ? limit : n;
++        snprintf(path, sizeof(path), "%s/%04u_n%llu.bin",
++                getenv("FSR4_DUMP_DIR") ? getenv("FSR4_DUMP_DIR") : "Z:/data/tmp/wdump", i, (unsigned long long)n);
 +        if ((f = fopen(path, "wb")))
 +        {
 +            fwrite(vkd3d_fsr4_hostbufs[i].cpu, 1, (size_t)cap, f);
@@ -45,7 +47,7 @@ index 611e373b..036f4a69 100644
  static void STDMETHODCALLTYPE d3d12_command_list_Dispatch(d3d12_command_list_iface *iface,
          UINT x, UINT y, UINT z)
  {
-@@ -9494,6 +9530,20 @@ static void STDMETHODCALLTYPE d3d12_command_list_Dispatch(d3d12_command_list_ifa
+@@ -9494,6 +9532,21 @@ static void STDMETHODCALLTYPE d3d12_command_list_Dispatch(d3d12_command_list_ifa
      const VkPhysicalDeviceLimits *limits;
  
      TRACE("iface %p, x %u, y %u, z %u.\n", iface, x, y, z);
@@ -60,13 +62,14 @@ index 611e373b..036f4a69 100644
 +        static int en = -1;
 +        static unsigned n = 0;
 +        if (en < 0) en = getenv("FSR4_FORCE_HOST_WEIGHTS") ? 1 : 0;
-+        if (en && ++n == (getenv("FSR4_HOST_BIG") ? 1500u : 4000u))
++        if (en && ++n == (getenv("FSR4_DUMP_AT") ? (unsigned)atoi(getenv("FSR4_DUMP_AT")) :
++                getenv("FSR4_HOST_BIG") ? 1500u : 4000u))
 +            vkd3d_fsr4_dump_hostbufs();
 +    }
  
      d3d12_command_list_check_render_pass_validation(list, "Dispatch called within a render pass.\n", true);
      d3d12_command_list_flush_dgc_batch(list);
-@@ -9584,6 +9634,34 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyBufferRegion(d3d12_command_
+@@ -9584,6 +9637,34 @@ static void STDMETHODCALLTYPE d3d12_command_list_CopyBufferRegion(d3d12_command_
      d3d12_command_list_track_resource_usage(list, dst_resource, true);
      d3d12_command_list_track_resource_usage(list, src_resource, true);
  

@@ -17,6 +17,9 @@ explains what the files are and where they came from.
 | `radv/mesa-26.1.6-patched/libvulkan_radeon.so` | 21075568 | `a076b4c7d31da85ebc11496265a1f421` | RADV, Mesa 26.1.6 + `patches/mesa-nir-imul24-int8.patch`. |
 | `radv/mesa-26.2.2-patched/libvulkan_radeon.so` | 21874128 | `a34fca39f8839fcaefe46baf7c81775c` | RADV, Mesa 26.2.2 + `patches/mesa-26.2.2-nir-imul24-int8.patch`. |
 | `radv/mesa-26.2.2-stock/libvulkan_radeon.so` | 21869976 | `d698ce62ca4edf969a42916f6456327f` | RADV, Mesa 26.2.2 unchanged. The control. |
+| `tools/fsr4_layer/sets/balanced/` | 2437608 | `6004cee7836d5a9670f7963299e46e69` | 11 tuned FSR4 shaders, md5 over the set. |
+| `tools/fsr4_layer/sets/quality/` | 2729560 | `d7cc493ef460b1d211dd61ca4736bd01` | 11 tuned FSR4 shaders, md5 over the set. |
+| `tools/fsr4_layer/sets/speed/` | 2726184 | `50f4d7fcfc74bff1a035fb1acf18a06e` | 12 tuned FSR4 shaders, md5 over the set. |
 | `sdk_sample/patched/FidelityFX_FSR.exe` | 1624576 | `7f68c091536c9839878abe2e39347aa6` | SDK sample exe with both byte patches. |
 | `sdk_sample/patched/FidelityFX_FSR.pdb` | 19222528 | `60e7b501c9783f24f1156cf551feaa16` | SDK sample debug symbols. |
 | `sdk_sample/stock/FidelityFX_FSR.exe` | 1624576 | `546eb03b61c408fb65b387d68a77f89a` | SDK sample exe, unchanged. |

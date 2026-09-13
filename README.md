@@ -1,16 +1,71 @@
 # FSR4 INT8 on Polaris (gfx803)
 
-RADV patches that make AMD's FSR4 INT8 upscaler run faster on GCN4 hardware, such as the RX 470,
-RX 480, RX 570 and RX 580.
+Run AMD's FSR4 upscaler on GCN4 cards, such as the RX 470, RX 480, RX 570 and RX 580, and make it
+fast enough to use.
 
-GCN4 has no hardware `dp4a` instruction, so every int8 multiply-accumulate in FSR4's neural network
-is emulated in software. Stock Mesa emulates it with full 32-bit multiplies. These patches emit
-`v_mad_i32_i24` instead, a full-rate 24-bit multiply-add that GCN has had since its first
-generation. The result is exact for 8-bit operands. In Pragmata it made frames 2.28 times faster
-than stock Mesa with FSR 4.1.1, and 1.75 times faster with FSR 4.0.2.
+Two pieces do the work.
 
-This is not a driver you install system-wide. It is a second copy of RADV that a single game opts
-into through one environment variable.
+1. **A patched RADV.** GCN4 has no hardware `dp4a`, so every int8 multiply-accumulate in FSR4's
+   network is emulated. Stock Mesa uses full 32-bit multiplies. The patch emits `v_mad_i32_i24`
+   instead, a full-rate 24-bit multiply-add that GCN has had since its first generation, and it is
+   exact for 8-bit operands. In Pragmata that alone makes frames 2.28 times faster than stock Mesa.
+2. **A Vulkan layer with tuned shaders.** FSR4's network shaders are rewritten: the weights become
+   constants, and two output channels share one multiply through a quantized, packed operand. The
+   layer swaps them in at run time, and falls back to the game's own shader whenever the driver
+   rejects one. On a Vega 56 the upscaler pass goes from 7.5 ms to 3 ms, and on an RX 570 from about
+   14.5 ms to 9.5 ms.
+
+Neither piece is installed system-wide. The driver is a second copy of RADV that one game opts into
+through an environment variable, and the layer is enabled per game in the same way.
+
+---
+
+## Quick start
+
+Install the driver as described below, then put the launcher in front of the game.
+
+**Steam.** In the game's launch options:
+
+```
+FSR4_SET=balanced /path/to/tools/fsr4_layer/fsr4-run %command%
+```
+
+**Heroic.** Settings, Advanced, Wrapper command:
+
+```
+/path/to/tools/fsr4_layer/fsr4-run
+```
+
+and add `FSR4_SET=balanced` to the environment variables in the same panel.
+
+**Anything else.** Put `fsr4-run` in front of the command.
+
+Build the layer once before first use:
+
+```bash
+cd tools/fsr4_layer
+gcc -O2 -fPIC -shared -o libfsr4_layer.so fsr4_layer.c -lpthread
+```
+
+### The sets
+
+`FSR4_SET` picks how far the shaders are rewritten. Try them in a game you know and keep the one you
+like. The error each one adds is measured against the exact result, and the tables further down show
+what it costs in milliseconds.
+
+| value | what it does | how it looks |
+|---|---|---|
+| `quality` | tight error budget per pass, mostly 5-bit and 6-bit packing | hard to tell from stock |
+| `balanced` | medium budget, mixes 4-bit packing, 3-bit packing and light pruning | very close to stock |
+| `speed` | drops every weight of magnitude 16 or less | visibly softer, clearly faster |
+| `off` | change nothing | stock FSR4 |
+
+Other variables: `FSR4_DEBUG=1` prints one line per replaced shader, `FSR4_SETS` points at another
+directory of sets, and `FSR4_CACHE` moves the cache.
+
+The sets in `tools/fsr4_layer/sets/` are built for the vkd3d-proton in this repository. If you use a
+different build, the layer finds no match and changes nothing, and `tools/fsr4_tune/` rebuilds them
+for your card and your vkd3d.
 
 ---
 
@@ -126,8 +181,11 @@ Fsr4ForceEnableInt8=true
 ```bash
 VK_DRIVER_FILES=$HOME/.local/share/radv-fsr4/radeon_icd.x86_64.json \
 FSR4_DOT_MODE=i32 \
+FSR4_SET=balanced /path/to/tools/fsr4_layer/fsr4-run \
   %command%
 ```
+
+Drop the `fsr4-run` line to run stock FSR4 shaders on the patched driver.
 
 `FSR4_DOT_MODE=i32` is what routes the shader through the patched path. Without it the Mesa patch
 does nothing.
@@ -198,6 +256,54 @@ to NIR's software `sdot_4x8` lowering. It does not help here, because these shad
 `OpSDot`. vkd3d-proton emits the decomposition itself, so the upstream rule never matches.
 
 The logs are in `evidence/fsr-4.0.2-vs-4.1.1/` and `evidence/mesa-26.2.2-vs-our-patch/`.
+
+---
+
+## Upscaler times with the tuned shaders
+
+The numbers above are whole frames with the driver patch alone. The table below is the upscaler pass
+only, at 1280x720 to 1920x1080 with FSR 4.1.1b, which is what the layer changes.
+
+| shaders | Vega 56 | RX 570 | picture |
+|---|---:|---:|---|
+| stock FSR4 | 7.5 | about 14.5 | the reference |
+| weights baked in, exact | 7.5 | 14 | bit-identical to stock |
+| 5-bit packing, all network passes | 6 | 14.6 | no visible change |
+| `quality` set | 4.0 to 4.5 | 13 | hard to tell from stock |
+| `balanced` set | 3.5 | 11 | very close to stock |
+| `speed` set | 3 to 5 | 9.5 | visibly softer |
+
+The Vega gains far more than Polaris. Polaris already runs FSR4's own code at one vector instruction
+per multiply, because it extracts weight bytes on the scalar unit, so there is less to win. The Vega
+also rewards weight baking on its own, while on Polaris baking alone is close to a wash.
+
+Two findings are worth knowing before you pick a set.
+
+1. **Leave the output head alone.** Rewriting it costs temporal stability, whatever the method. The
+   head writes the history buffer that the next frame reads, so an error there returns frame after
+   frame. None of the shipped sets touches it.
+2. **At equal measured error, pruning looks worse than quantization.** Pruning removes a share of
+   every sum, which biases the result, while quantization spreads a small unbiased error over every
+   term. Prefer the packed sets when the two are close.
+
+`notes/FSR4_411_ANALYSIS.md` has the per-pass measurements behind all of this.
+
+---
+
+## Rebuilding the sets for your card
+
+The best variant differs per card: on the Vega, 5-bit packing wins on pass9, and on Polaris FSR4's
+own shader wins there. `tools/fsr4_tune/` rebuilds and re-times everything on the card it runs on.
+See its README. The short version:
+
+```bash
+cd tools/fsr4_tune
+python3 tune.py capture /your/shader/dump weights.bin
+python3 tune.py generate --modes pack6,pack5,pack4,prune16
+python3 tune.py bench /your/shader/dump
+python3 tune.py install ./override --mode best
+python3 install_layer.py /your/shader/dump ./override ~/.cache/fsr4_opt/spirv
+```
 
 ![Pragmata title screen on the test machine, with the FSR4 watermark reading FSR4-I8 UPSCALE 4.1.1 and the OptiScaler 0.9.4 overlay open](docs/pragmata-fsr4-411-rx480.jpeg)
 
