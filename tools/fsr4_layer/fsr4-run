@@ -9,9 +9,13 @@
 #
 # Environment:
 #   FSR4_SET      which shader set to use. Default: balanced
-#                 quality    the network passes at a tight error budget, hard to tell from stock
-#                 balanced   a mixed set, clearly faster, very close to stock
-#                 speed      a mixed set with pruning, fastest, visibly softer
+#                 Four names cover the common cases:
+#                   lossless   = exact, the same maths, only faster where baking wins
+#                   quality    = fin15, hard to tell from stock
+#                   balanced   = fin25, clearly faster, very close to stock
+#                   speed      = prune16, fastest, visibly softer
+#                 Everything measured is available by its own name. Run with FSR4_SET=list to see
+#                 them, and read the table in README.md before picking.
 #                 off        change nothing
 #   FSR4_SETS     directory holding the sets. Default: the sets/ next to this script
 #   FSR4_LAYER    directory holding libfsr4_layer.so and fsr4_layer.json. Default: next to this script
@@ -27,9 +31,25 @@ SETS=${FSR4_SETS:-$HERE/sets}
 LAYER=${FSR4_LAYER:-$HERE}
 CACHE=${FSR4_CACHE:-$HOME/.cache/fsr4_opt/spirv}
 
+if [ "$SET" = list ]; then
+    echo "sets in $SETS:" >&2
+    ls "$SETS" 2>/dev/null | tr '\n' ' ' >&2
+    echo >&2
+    echo "aliases: lossless=exact quality=fin15 balanced=fin25 speed=prune16" >&2
+    echo "see docs/SETS.md for what each one costs and how it looks" >&2
+    exit 0
+fi
+
 if [ "$SET" = off ] || [ $# -eq 0 ]; then
     exec "$@"
 fi
+
+case "$SET" in
+    lossless) SET=exact ;;
+    quality)  SET=fin15 ;;
+    balanced) SET=fin25 ;;
+    speed)    SET=prune16 ;;
+esac
 
 if [ ! -d "$SETS/$SET" ]; then
     echo "fsr4-run: no set '$SET' in $SETS. Available: $(ls "$SETS" 2>/dev/null | tr '\n' ' ')" >&2

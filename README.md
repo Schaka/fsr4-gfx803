@@ -49,23 +49,25 @@ gcc -O2 -fPIC -shared -o libfsr4_layer.so fsr4_layer.c -lpthread
 
 ### The sets
 
-`FSR4_SET` picks how far the shaders are rewritten. Try them in a game you know and keep the one you
-like. The error each one adds is measured against the exact result, and the tables further down show
-what it costs in milliseconds.
+`FSR4_SET` picks how far the shaders are rewritten. Four names cover the common cases.
 
-| value | what it does | how it looks |
+| name | what it does | how it looks |
 |---|---|---|
-| `quality` | tight error budget per pass, mostly 5-bit and 6-bit packing | hard to tell from stock |
-| `balanced` | medium budget, mixes 4-bit packing, 3-bit packing and light pruning | very close to stock |
-| `speed` | drops every weight of magnitude 16 or less | visibly softer, clearly faster |
+| `lossless` | the same maths, with the weights baked in. Faster only where that wins | bit-identical to stock |
+| `quality` | per-pass mix, every pass held under 15 percent error | hard to tell from stock |
+| `balanced` | per-pass mix, under 25 percent | very close to stock |
+| `speed` | drops every weight of magnitude 16 or less | visibly softer, fastest |
 | `off` | change nothing | stock FSR4 |
+
+Nineteen sets ship in total, one per variant we measured, and any of them can be named directly.
+`FSR4_SET=list` prints them, and `docs/SETS.md` says what each one is, what it measured on two cards,
+and how it looked.
 
 Other variables: `FSR4_DEBUG=1` prints one line per replaced shader, `FSR4_SETS` points at another
 directory of sets, and `FSR4_CACHE` moves the cache.
 
-The sets in `tools/fsr4_layer/sets/` are built for the vkd3d-proton in this repository. If you use a
-different build, the layer finds no match and changes nothing, and `tools/fsr4_tune/` rebuilds them
-for your card and your vkd3d.
+The sets are built for the vkd3d-proton in this repository. With a different build the layer finds no
+match and changes nothing, and `tools/fsr4_tune/` rebuilds them for your card and your vkd3d.
 
 ---
 

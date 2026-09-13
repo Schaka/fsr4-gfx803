@@ -6,12 +6,16 @@
  * idea as VKD3D_SHADER_OVERRIDE, but it sits below the translation layer, so it also covers native
  * Vulkan and any other D3D12 layer.
  *
+ * With FSR4_AUTOTUNE=1 it goes further: it builds every known variant of a shader, measures the real
+ * dispatches on this card, keeps the fastest, and remembers the choice. See autotune.h.
+ *
  * Environment:
  *   FSR4_LAYER_CACHE   directory that holds <spirv-hash>.spv. Default ~/.cache/fsr4_opt/spirv
  *   FSR4_LAYER_DUMP    directory to write every module to, named by its hash. Off by default.
  *   FSR4_LAYER_DEBUG   1 prints one line per module
+ *   FSR4_AUTOTUNE      1 measures the variants and keeps the fastest. Off by default.
  *
- * Build: see meson.build. Install the .so and fsr4_layer.json where the loader looks for layers.
+ * Build: gcc -O2 -fPIC -shared -o libfsr4_layer.so fsr4_layer.c -lpthread
  */
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
@@ -22,6 +26,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#include "autotune.h"
 
 #ifndef VK_LAYER_EXPORT
 #define VK_LAYER_EXPORT __attribute__((visibility("default")))
@@ -34,14 +40,62 @@ struct device_data {
     PFN_vkCreateShaderModule create_shader_module;
     PFN_vkDestroyShaderModule destroy_shader_module;
     PFN_vkCreateComputePipelines create_compute_pipelines;
+    PFN_vkDestroyPipeline destroy_pipeline;
+    PFN_vkCreateQueryPool create_query_pool;
+    PFN_vkGetQueryPoolResults get_query_pool_results;
+    PFN_vkCmdBindPipeline cmd_bind_pipeline;
+    PFN_vkCmdDispatch cmd_dispatch;
+    PFN_vkCmdResetQueryPool cmd_reset_query_pool;
+    PFN_vkCmdWriteTimestamp cmd_write_timestamp;
+    PFN_vkQueueSubmit queue_submit;
     PFN_vkGetDeviceProcAddr get_device_proc;
+    struct tune_state tune;
 };
 
-static struct device_data g_devices[MAX_DEVICES];
+/* One entry per command buffer that has a tuned pipeline bound. */
+#define MAX_CMDBUFS 64
+static struct {
+    VkCommandBuffer cmd;
+    struct device_data *dd;
+    unsigned shader;
+    unsigned variant;
+    bool active;
+} g_bound[MAX_CMDBUFS];
+
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* The game creates a module, then a pipeline from it. The tuner needs the hash at pipeline time. */
+#define MAX_MODULES 4096
+static struct {
+    VkShaderModule module;
+    uint64_t hash;
+} g_module_hash[MAX_MODULES];
+static unsigned g_module_count;
+
+static void remember_module(VkShaderModule module, uint64_t hash)
+{
+    pthread_mutex_lock(&g_lock);
+    unsigned i = g_module_count % MAX_MODULES;
+    g_module_hash[i].module = module;
+    g_module_hash[i].hash = hash;
+    g_module_count++;
+    pthread_mutex_unlock(&g_lock);
+}
+
+static uint64_t module_hash(VkShaderModule module)
+{
+    for (unsigned i = 0; i < MAX_MODULES; i++)
+        if (g_module_hash[i].module == module)
+            return g_module_hash[i].hash;
+    return 0;
+}
+
+static struct device_data g_devices[MAX_DEVICES];
 static char g_cache[512];
 static char g_dump[512];
 static int g_debug;
+static int g_autotune;
+static float g_timestamp_period = 1.0f;
 
 static void init_config(void)
 {
@@ -62,6 +116,7 @@ static void init_config(void)
         mkdir(g_dump, 0755);
     }
     g_debug = getenv("FSR4_LAYER_DEBUG") != NULL;
+    g_autotune = getenv("FSR4_AUTOTUNE") != NULL;
 }
 
 /* FNV-1a over the module, the same shape of hash vkd3d uses for its own dumps. */
@@ -116,6 +171,8 @@ static void dump_module(uint64_t hash, const uint32_t *code, size_t size)
     }
 }
 
+#include "autotune.c.inc"
+
 /* vkd3d-proton usually skips VkShaderModule and puts the module inline in the pipeline stage, so the
  * same replacement has to happen there. The create-infos are copied, because the caller owns them. */
 static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateComputePipelines(
@@ -131,16 +188,51 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateComputePipelines(
     uint32_t **codes = NULL;
     unsigned patched = 0;
 
+    if (dd->tune.enabled)
+        for (uint32_t i = 0; i < count; i++)
+            pipelines[i] = VK_NULL_HANDLE;
+
     for (uint32_t i = 0; i < count; i++) {
         const VkShaderModuleCreateInfo *m = infos[i].stage.pNext;
         while (m && m->sType != VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
             m = m->pNext;
+
+        if (!m && dd->tune.enabled && infos[i].stage.module != VK_NULL_HANDLE) {
+            /* The game passed a module handle. Its hash was recorded when it was created. */
+            uint64_t mh = module_hash(infos[i].stage.module);
+            struct tune_shader *sh = mh ? tune_build(dd, mh, &infos[i], cache, alloc) : NULL;
+            if (sh) {
+                VkResult rr = dd->create_compute_pipelines(device, cache, 1, &infos[i], alloc, &pipelines[i]);
+                if (rr != VK_SUCCESS)
+                    return rr;
+                sh->app_handle = pipelines[i];
+                sh->variants[0].pipeline = pipelines[i];
+                sh->variants[0].usable = true;
+            }
+            continue;
+        }
         if (!m)
             continue;
 
         uint64_t h = spirv_hash(m->pCode, m->codeSize);
         if (g_dump[0])
             dump_module(h, m->pCode, m->codeSize);
+
+        if (dd->tune.enabled) {
+            /* Build every variant, then let the game have the original handle. The bind hook puts
+             * the variant under test into the frame. */
+            struct tune_shader *sh = tune_build(dd, h, &infos[i], cache, alloc);
+            if (sh) {
+                VkResult rr = dd->create_compute_pipelines(device, cache, 1, &infos[i], alloc, &pipelines[i]);
+                if (rr != VK_SUCCESS)
+                    return rr;
+                sh->app_handle = pipelines[i];
+                sh->variants[0].pipeline = pipelines[i];
+                sh->variants[0].usable = true;
+                continue;
+            }
+        }
+
         size_t size = 0;
         uint32_t *code = load_replacement(h, &size);
         if (g_debug)
@@ -168,6 +260,24 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateComputePipelines(
         patched++;
     }
 
+    if (dd->tune.enabled && dd->tune.shader_count) {
+        /* Any pipeline the tuner did not take still has to be created. */
+        for (uint32_t i = 0; i < count; i++)
+            if (pipelines[i] == VK_NULL_HANDLE) {
+                VkResult rr = dd->create_compute_pipelines(device, cache, 1,
+                        copy ? &copy[i] : &infos[i], alloc, &pipelines[i]);
+                if (rr != VK_SUCCESS) {
+                    free(copy); free(mods); free(codes);
+                    return rr;
+                }
+            }
+        if (codes)
+            for (uint32_t i = 0; i < count; i++)
+                free(codes[i]);
+        free(copy); free(mods); free(codes);
+        return VK_SUCCESS;
+    }
+
     VkResult r;
     if (patched) {
         r = dd->create_compute_pipelines(device, cache, count, copy, alloc, pipelines);
@@ -184,6 +294,129 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateComputePipelines(
         for (uint32_t i = 0; i < count; i++)
             free(codes[i]);
     free(copy); free(mods); free(codes);
+    return r;
+}
+
+static struct device_data *cmd_device(VkCommandBuffer cmd, unsigned *slot)
+{
+    for (unsigned i = 0; i < MAX_CMDBUFS; i++)
+        if (g_bound[i].active && g_bound[i].cmd == cmd) {
+            *slot = i;
+            return g_bound[i].dd;
+        }
+    return NULL;
+}
+
+/* The game binds the handle it was given. When that shader is being tuned, bind a variant instead. */
+static VKAPI_ATTR void VKAPI_CALL fsr4_CmdBindPipeline(
+        VkCommandBuffer cmd, VkPipelineBindPoint bind_point, VkPipeline pipeline)
+{
+    struct device_data *dd = NULL;
+    for (unsigned i = 0; i < MAX_DEVICES; i++)
+        if (g_devices[i].device && g_devices[i].tune.enabled) {
+            dd = &g_devices[i];
+            break;
+        }
+
+    unsigned slot = 0;
+    for (unsigned i = 0; i < MAX_CMDBUFS; i++)
+        if (g_bound[i].active && g_bound[i].cmd == cmd) {
+            g_bound[i].active = false;
+            break;
+        }
+
+    if (dd && bind_point == VK_PIPELINE_BIND_POINT_COMPUTE) {
+        struct tune_shader *sh = tune_find(&dd->tune, pipeline);
+        if (sh) {
+            unsigned variant = 0;
+            VkPipeline use = tune_pick(sh, &variant);
+            for (slot = 0; slot < MAX_CMDBUFS; slot++)
+                if (!g_bound[slot].active)
+                    break;
+            if (slot < MAX_CMDBUFS) {
+                g_bound[slot].cmd = cmd;
+                g_bound[slot].dd = dd;
+                g_bound[slot].shader = (unsigned)(sh - dd->tune.shaders);
+                g_bound[slot].variant = variant;
+                g_bound[slot].active = true;
+            }
+            dd->cmd_bind_pipeline(cmd, bind_point, use);
+            return;
+        }
+    }
+
+    struct device_data *any = dd;
+    if (!any)
+        for (unsigned i = 0; i < MAX_DEVICES; i++)
+            if (g_devices[i].device) {
+                any = &g_devices[i];
+                break;
+            }
+    any->cmd_bind_pipeline(cmd, bind_point, pipeline);
+}
+
+/* Brackets a tuned dispatch with timestamps. */
+static VKAPI_ATTR void VKAPI_CALL fsr4_CmdDispatch(VkCommandBuffer cmd, uint32_t x, uint32_t y, uint32_t z)
+{
+    unsigned slot;
+    struct device_data *dd = cmd_device(cmd, &slot);
+    if (!dd) {
+        for (unsigned i = 0; i < MAX_DEVICES; i++)
+            if (g_devices[i].device) {
+                g_devices[i].cmd_dispatch(cmd, x, y, z);
+                return;
+            }
+        return;
+    }
+
+    struct tune_state *t = &dd->tune;
+    struct tune_shader *sh = &t->shaders[g_bound[slot].shader];
+    if (sh->chosen >= 0) {
+        dd->cmd_dispatch(cmd, x, y, z);
+        return;
+    }
+
+    pthread_mutex_lock(&g_lock);
+    unsigned q = t->next_slot;
+    unsigned tries = 0;
+    while (t->slots[q].pending && tries++ < TUNE_QUERIES / 2)
+        q = (q + 1) % (TUNE_QUERIES / 2);
+    if (t->slots[q].pending) {
+        pthread_mutex_unlock(&g_lock);
+        dd->cmd_dispatch(cmd, x, y, z);      /* no free slot, just run it */
+        return;
+    }
+    t->slots[q].shader = g_bound[slot].shader;
+    t->slots[q].variant = g_bound[slot].variant;
+    t->slots[q].pending = true;
+    t->next_slot = (q + 1) % (TUNE_QUERIES / 2);
+    pthread_mutex_unlock(&g_lock);
+
+    dd->cmd_reset_query_pool(cmd, t->pool, q * 2, 2);
+    dd->cmd_write_timestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, t->pool, q * 2);
+    dd->cmd_dispatch(cmd, x, y, z);
+    dd->cmd_write_timestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, t->pool, q * 2 + 1);
+}
+
+static VKAPI_ATTR VkResult VKAPI_CALL fsr4_QueueSubmit(
+        VkQueue queue, uint32_t count, const VkSubmitInfo *submits, VkFence fence)
+{
+    struct device_data *dd = NULL;
+    for (unsigned i = 0; i < MAX_DEVICES; i++)
+        if (g_devices[i].device && g_devices[i].tune.enabled) {
+            dd = &g_devices[i];
+            break;
+        }
+    if (!dd)
+        for (unsigned i = 0; i < MAX_DEVICES; i++)
+            if (g_devices[i].device) {
+                dd = &g_devices[i];
+                break;
+            }
+
+    VkResult r = dd->queue_submit(queue, count, submits, fence);
+    if (dd->tune.enabled)
+        tune_collect(dd);
     return r;
 }
 
@@ -210,13 +443,18 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateShaderModule(
         patched.codeSize = size;
         VkResult r = dd->create_shader_module(device, &patched, alloc, module);
         free(code);
-        if (r == VK_SUCCESS)
+        if (r == VK_SUCCESS) {
+            remember_module(*module, h);
             return r;
+        }
         /* A replacement that the driver rejects must never break the game. */
         if (g_debug)
             fprintf(stderr, "fsr4_layer: replacement %016lx rejected, using the original\n", (unsigned long)h);
     }
-    return dd->create_shader_module(device, info, alloc, module);
+    VkResult r = dd->create_shader_module(device, info, alloc, module);
+    if (r == VK_SUCCESS)
+        remember_module(*module, h);
+    return r;
 }
 
 static PFN_vkGetInstanceProcAddr g_next_gipa;
@@ -254,6 +492,14 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateDevice(
     PFN_vkGetDeviceProcAddr gdpa = chain->u.pLayerInfo->pfnNextGetDeviceProcAddr;
     chain->u.pLayerInfo = chain->u.pLayerInfo->pNext;
 
+    PFN_vkGetPhysicalDeviceProperties gpdp =
+            (PFN_vkGetPhysicalDeviceProperties)gipa(NULL, "vkGetPhysicalDeviceProperties");
+    if (gpdp) {
+        VkPhysicalDeviceProperties props;
+        gpdp(physical_device, &props);
+        g_timestamp_period = props.limits.timestampPeriod;
+    }
+
     PFN_vkCreateDevice create = (PFN_vkCreateDevice)gipa(NULL, "vkCreateDevice");
     VkResult r = create(physical_device, info, alloc, device);
     if (r != VK_SUCCESS)
@@ -267,6 +513,16 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateDevice(
             g_devices[i].create_shader_module = (PFN_vkCreateShaderModule)gdpa(*device, "vkCreateShaderModule");
             g_devices[i].destroy_shader_module = (PFN_vkDestroyShaderModule)gdpa(*device, "vkDestroyShaderModule");
             g_devices[i].create_compute_pipelines = (PFN_vkCreateComputePipelines)gdpa(*device, "vkCreateComputePipelines");
+            g_devices[i].destroy_pipeline = (PFN_vkDestroyPipeline)gdpa(*device, "vkDestroyPipeline");
+            g_devices[i].create_query_pool = (PFN_vkCreateQueryPool)gdpa(*device, "vkCreateQueryPool");
+            g_devices[i].get_query_pool_results = (PFN_vkGetQueryPoolResults)gdpa(*device, "vkGetQueryPoolResults");
+            g_devices[i].cmd_bind_pipeline = (PFN_vkCmdBindPipeline)gdpa(*device, "vkCmdBindPipeline");
+            g_devices[i].cmd_dispatch = (PFN_vkCmdDispatch)gdpa(*device, "vkCmdDispatch");
+            g_devices[i].cmd_reset_query_pool = (PFN_vkCmdResetQueryPool)gdpa(*device, "vkCmdResetQueryPool");
+            g_devices[i].cmd_write_timestamp = (PFN_vkCmdWriteTimestamp)gdpa(*device, "vkCmdWriteTimestamp");
+            g_devices[i].queue_submit = (PFN_vkQueueSubmit)gdpa(*device, "vkQueueSubmit");
+            g_devices[i].tune.timestamp_period = g_timestamp_period;
+            tune_init(&g_devices[i]);
             break;
         }
     }
@@ -293,6 +549,11 @@ vkGetDeviceProcAddr(VkDevice device, const char *pName)
     ENTRY(CreateShaderModule)
     ENTRY(CreateComputePipelines)
     ENTRY(DestroyDevice)
+    if (g_autotune) {
+        ENTRY(CmdBindPipeline)
+        ENTRY(CmdDispatch)
+        ENTRY(QueueSubmit)
+    }
     struct device_data *dd = device_data(device);
     return dd ? dd->get_device_proc(device, pName) : NULL;
 }
