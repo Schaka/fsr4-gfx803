@@ -63,6 +63,9 @@ sets it for you.
 | `FSR4_LAYER_DUMP` | a directory | write every module the game creates, named by its hash |
 | `FSR4_LAYER_DEBUG` | `1` | print one line per module, and say when one is replaced or rewritten |
 | `FSR4_NO_SDOT_EXPAND` | `1` | leave the packed dot products alone |
+| `FSR4_PROFILE` | `1` | report the GPU time FSR4's network really costs |
+| `FSR4_PROFILE_MIN` | bytes | module size that counts as a network shader. Default 40000 |
+| `FSR4_PROFILE_EVERY` | seconds | how often to report. Default 5 |
 | `DISABLE_FSR4_LAYER` | `1` | turn the layer off without removing it |
 
 ## How a set is matched
@@ -76,6 +79,23 @@ If a run replaces nothing, the build is not in `keys.txt`. `../fsr4_tune/make_ke
 single `VKD3D_SHADER_DUMP_PATH` run. A set you build yourself with `../fsr4_tune/tune.py` needs none
 of this. Its files carry the name of the SPIR-V the layer saw, which is what the layer looks for when
 `keys.txt` has no line.
+
+## Measuring the upscaler
+
+A frametime says what the whole game did. `FSR4_PROFILE=1` says what the upscaler did: the layer
+puts timestamps around every dispatch of a shader large enough to be part of FSR4's network, and
+prints the GPU time they took.
+
+    fsr4_layer: upscaler 792.1 ms/s over 10.0 s, 858 dispatches/s
+
+The report is per second of wall time, because the layer never sees the game's frames. Divide by the
+frame rate for the cost per frame, and divide the dispatch rate by the same number to get the passes
+per frame. That second number is worth checking: FSR4 4.1.1 runs about 26 network dispatches per
+frame, and a build that runs far fewer is not upscaling, whatever its frame rate says.
+
+Both timestamps are written at the bottom of the pipe, so a dispatch is measured from the completion
+of the work before it. That includes any gap between passes, which makes the number an upper bound on
+the network itself. It is consistent between runs, so it compares builds and sets honestly.
 
 ## What to expect
 

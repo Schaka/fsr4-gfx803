@@ -31,6 +31,7 @@
 #include <sys/stat.h>
 
 #include "autotune.h"
+#include "profile.h"
 #include "spv_sdot.c.inc"
 
 #ifndef VK_LAYER_EXPORT
@@ -52,8 +53,10 @@ struct device_data {
     PFN_vkCmdResetQueryPool cmd_reset_query_pool;
     PFN_vkCmdWriteTimestamp cmd_write_timestamp;
     PFN_vkQueueSubmit queue_submit;
+    PFN_vkQueueSubmit2 queue_submit2;
     PFN_vkGetDeviceProcAddr get_device_proc;
     struct tune_state tune;
+    struct prof_state prof;
 };
 
 /* One entry per command buffer that has a tuned pipeline bound. */
@@ -73,17 +76,37 @@ static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct {
     VkShaderModule module;
     uint64_t hash;
+    size_t size;
 } g_module_hash[MAX_MODULES];
 static unsigned g_module_count;
 
-static void remember_module(VkShaderModule module, uint64_t hash)
+static void remember_module(VkShaderModule module, uint64_t hash, size_t size)
 {
     pthread_mutex_lock(&g_lock);
     unsigned i = g_module_count % MAX_MODULES;
     g_module_hash[i].module = module;
     g_module_hash[i].hash = hash;
+    g_module_hash[i].size = size;
     g_module_count++;
     pthread_mutex_unlock(&g_lock);
+}
+
+/* The size of the SPIR-V a module was built from, or 0 when it was not seen. */
+static size_t module_size_of(VkShaderModule module)
+{
+    for (unsigned i = 0; i < MAX_MODULES; i++)
+        if (g_module_hash[i].module == module)
+            return g_module_hash[i].size;
+    return 0;
+}
+
+/* The module create info a pipeline carries inline, if it carries one. */
+static const VkShaderModuleCreateInfo *inline_module(const VkComputePipelineCreateInfo *info)
+{
+    const VkShaderModuleCreateInfo *m = info->stage.pNext;
+    while (m && m->sType != VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
+        m = m->pNext;
+    return m;
 }
 
 static uint64_t module_hash(VkShaderModule module)
@@ -100,6 +123,7 @@ static char g_keys_dir[512];
 static char g_dump[512];
 static int g_debug;
 static int g_autotune;
+static int g_profile;
 static int g_expand_sdot;             /* set when the card has no packed dot product */
 static float g_timestamp_period = 1.0f;
 
@@ -147,6 +171,7 @@ static void init_config(void)
     }
     g_debug = getenv("FSR4_LAYER_DEBUG") != NULL;
     g_autotune = getenv("FSR4_AUTOTUNE") != NULL;
+    g_profile = getenv("FSR4_PROFILE") != NULL;
 }
 
 /* FNV-1a over the module, the same shape of hash vkd3d uses for its own dumps. */
@@ -234,6 +259,7 @@ static void dump_module(uint64_t hash, const uint32_t *code, size_t size)
     }
 }
 
+#include "profile.c.inc"
 #include "autotune.c.inc"
 
 /* vkd3d-proton usually skips VkShaderModule and puts the module inline in the pipeline stage, so the
@@ -357,6 +383,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateComputePipelines(
         r = dd->create_compute_pipelines(device, cache, count, infos, alloc, pipelines);
     }
 
+    if (r == VK_SUCCESS && dd->prof.enabled)
+        for (uint32_t i = 0; i < count; i++) {
+            const VkShaderModuleCreateInfo *mi = inline_module(&infos[i]);
+            prof_note_pipeline(dd, pipelines[i], mi ? mi->codeSize : module_size_of(infos[i].stage.module));
+        }
     if (codes)
         for (uint32_t i = 0; i < count; i++)
             free(codes[i]);
@@ -374,6 +405,47 @@ static struct device_data *cmd_device(VkCommandBuffer cmd, unsigned *slot)
     return NULL;
 }
 
+/* One entry per command buffer that currently has a network shader bound, for profiling. */
+static struct {
+    VkCommandBuffer cmd;
+    struct device_data *dd;
+    unsigned pipeline;
+    bool active;
+} g_prof_bound[MAX_CMDBUFS];
+
+static void prof_bind(struct device_data *dd, VkCommandBuffer cmd, VkPipelineBindPoint point,
+                      VkPipeline pipeline)
+{
+    if (!dd || !dd->prof.enabled)
+        return;
+    for (unsigned i = 0; i < MAX_CMDBUFS; i++)
+        if (g_prof_bound[i].active && g_prof_bound[i].cmd == cmd)
+            g_prof_bound[i].active = false;
+    if (point != VK_PIPELINE_BIND_POINT_COMPUTE)
+        return;
+    int idx = prof_index(&dd->prof, pipeline);
+    if (idx < 0)
+        return;
+    for (unsigned i = 0; i < MAX_CMDBUFS; i++)
+        if (!g_prof_bound[i].active) {
+            g_prof_bound[i].cmd = cmd;
+            g_prof_bound[i].dd = dd;
+            g_prof_bound[i].pipeline = (unsigned)idx;
+            g_prof_bound[i].active = true;
+            return;
+        }
+}
+
+static struct device_data *prof_cmd_device(VkCommandBuffer cmd, unsigned *pipeline_index)
+{
+    for (unsigned i = 0; i < MAX_CMDBUFS; i++)
+        if (g_prof_bound[i].active && g_prof_bound[i].cmd == cmd) {
+            *pipeline_index = g_prof_bound[i].pipeline;
+            return g_prof_bound[i].dd;
+        }
+    return NULL;
+}
+
 /* The game binds the handle it was given. When that shader is being tuned, bind a variant instead. */
 static VKAPI_ATTR void VKAPI_CALL fsr4_CmdBindPipeline(
         VkCommandBuffer cmd, VkPipelineBindPoint bind_point, VkPipeline pipeline)
@@ -384,6 +456,12 @@ static VKAPI_ATTR void VKAPI_CALL fsr4_CmdBindPipeline(
             dd = &g_devices[i];
             break;
         }
+
+    /* Pipeline handles are unique per device, so offering it to each device that is profiling
+     * lets the right one claim it. vkd3d-proton creates more than one device. */
+    for (unsigned i = 0; i < MAX_DEVICES; i++)
+        if (g_devices[i].device && g_devices[i].prof.enabled)
+            prof_bind(&g_devices[i], cmd, bind_point, pipeline);
 
     unsigned slot = 0;
     for (unsigned i = 0; i < MAX_CMDBUFS; i++)
@@ -428,6 +506,24 @@ static VKAPI_ATTR void VKAPI_CALL fsr4_CmdDispatch(VkCommandBuffer cmd, uint32_t
     unsigned slot;
     struct device_data *dd = cmd_device(cmd, &slot);
     if (!dd) {
+        unsigned pidx = 0;
+        struct device_data *pd = prof_cmd_device(cmd, &pidx);
+        if (pd) {
+            /* A network dispatch, with timestamps around it. */
+            int q = prof_take_slot(&pd->prof, pidx);
+            if (q >= 0) {
+                pd->cmd_reset_query_pool(cmd, pd->prof.pool, q * 2, 2);
+                /* Both timestamps are bottom of pipe. A top-of-pipe start is written when the
+                 * command reaches the front of the queue, which can be long before it runs, so it
+                 * measures waiting as well as work. Completion to completion does not. */
+                pd->cmd_write_timestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, pd->prof.pool, q * 2);
+                pd->cmd_dispatch(cmd, x, y, z);
+                pd->cmd_write_timestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, pd->prof.pool, q * 2 + 1);
+                return;
+            }
+            pd->cmd_dispatch(cmd, x, y, z);
+            return;
+        }
         for (unsigned i = 0; i < MAX_DEVICES; i++)
             if (g_devices[i].device) {
                 g_devices[i].cmd_dispatch(cmd, x, y, z);
@@ -484,6 +580,32 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_QueueSubmit(
     VkResult r = dd->queue_submit(queue, count, submits, fence);
     if (dd->tune.enabled)
         tune_collect(dd);
+    for (unsigned i = 0; i < MAX_DEVICES; i++)
+        if (g_devices[i].device && g_devices[i].prof.enabled) {
+            prof_collect(&g_devices[i]);
+            prof_report(&g_devices[i]);
+        }
+    return r;
+}
+
+/* vkd3d-proton submits through vkQueueSubmit2, so the results have to be collected there as well. */
+static VKAPI_ATTR VkResult VKAPI_CALL fsr4_QueueSubmit2(
+        VkQueue queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence fence)
+{
+    struct device_data *dd = NULL;
+    for (unsigned i = 0; i < MAX_DEVICES; i++)
+        if (g_devices[i].device && g_devices[i].queue_submit2) {
+            dd = &g_devices[i];
+            break;
+        }
+    if (!dd)
+        return VK_ERROR_INITIALIZATION_FAILED;
+    VkResult r = dd->queue_submit2(queue, count, submits, fence);
+    for (unsigned i = 0; i < MAX_DEVICES; i++)
+        if (g_devices[i].device && g_devices[i].prof.enabled) {
+            prof_collect(&g_devices[i]);
+            prof_report(&g_devices[i]);
+        }
     return r;
 }
 
@@ -515,7 +637,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateShaderModule(
         VkResult r = dd->create_shader_module(device, &patched, alloc, module);
         free(code);
         if (r == VK_SUCCESS) {
-            remember_module(*module, h);
+            remember_module(*module, h, info->codeSize);
             return r;
         }
         /* A replacement that the driver rejects must never break the game. */
@@ -524,7 +646,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateShaderModule(
     }
     VkResult r = dd->create_shader_module(device, info, alloc, module);
     if (r == VK_SUCCESS)
-        remember_module(*module, h);
+        remember_module(*module, h, info->codeSize);
     return r;
 }
 
@@ -612,8 +734,13 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateDevice(
             g_devices[i].cmd_reset_query_pool = (PFN_vkCmdResetQueryPool)gdpa(*device, "vkCmdResetQueryPool");
             g_devices[i].cmd_write_timestamp = (PFN_vkCmdWriteTimestamp)gdpa(*device, "vkCmdWriteTimestamp");
             g_devices[i].queue_submit = (PFN_vkQueueSubmit)gdpa(*device, "vkQueueSubmit");
+            g_devices[i].queue_submit2 = (PFN_vkQueueSubmit2)gdpa(*device, "vkQueueSubmit2");
+            if (!g_devices[i].queue_submit2)
+                g_devices[i].queue_submit2 = (PFN_vkQueueSubmit2)gdpa(*device, "vkQueueSubmit2KHR");
             g_devices[i].tune.timestamp_period = g_timestamp_period;
+            g_devices[i].prof.timestamp_period = g_timestamp_period;
             tune_init(&g_devices[i]);
+            prof_init(&g_devices[i]);
             break;
         }
     }
@@ -624,6 +751,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateDevice(
 
 static VKAPI_ATTR void VKAPI_CALL fsr4_DestroyDevice(VkDevice device, const VkAllocationCallbacks *alloc)
 {
+    struct device_data *pd = device_data(device);
+    if (pd)
+        prof_summary(pd);
     struct device_data *dd = device_data(device);
     PFN_vkDestroyDevice destroy = (PFN_vkDestroyDevice)dd->get_device_proc(device, "vkDestroyDevice");
     pthread_mutex_lock(&g_lock);
@@ -640,10 +770,12 @@ vkGetDeviceProcAddr(VkDevice device, const char *pName)
     ENTRY(CreateShaderModule)
     ENTRY(CreateComputePipelines)
     ENTRY(DestroyDevice)
-    if (g_autotune) {
+    /* Both the tuner and the profiler need to see the commands. */
+    if (g_autotune || g_profile) {
         ENTRY(CmdBindPipeline)
         ENTRY(CmdDispatch)
         ENTRY(QueueSubmit)
+        ENTRY(QueueSubmit2)
     }
     struct device_data *dd = device_data(device);
     return dd ? dd->get_device_proc(device, pName) : NULL;
