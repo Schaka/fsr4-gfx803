@@ -86,7 +86,7 @@ A frametime says what the whole game did. `FSR4_PROFILE=1` says what the upscale
 puts timestamps around every dispatch of a shader large enough to be part of FSR4's network, and
 prints the GPU time they took.
 
-    fsr4_layer: upscaler 792.1 ms/s over 10.0 s, 858 dispatches/s
+    fsr4_layer: upscaler 641.4 ms/s over 10.0 s, 1517 dispatches/s
 
 The report is per second of wall time, because the layer never sees the game's frames. Divide by the
 frame rate for the cost per frame, and divide the dispatch rate by the same number to get the passes

@@ -29,6 +29,26 @@ survivors are scaled up to carry the lost magnitude.
 first and pack what is left. Each one gives every pass the cheapest variant whose measured error
 stays under the budget in the name. FSR4's own shader is kept where nothing beats it.
 
+## Measured on the card, by the layer
+
+`FSR4_PROFILE=1` puts GPU timestamps around every network dispatch, so these are the upscaler's own
+GPU time rather than a frametime. RX 570, Pragmata, 1280x720 to 1920x1080, FSR 4.1.1b, one scene,
+stock vkd3d-proton, patched RADV throughout.
+
+| set | upscaler GPU ms | frametime ms | fps | shaders replaced | dot products rewritten |
+|---|---:|---:|---:|---:|---:|
+| `off` | 14.86 | 20.90 | 47.8 | 0 | 13 |
+| `lossless` | 14.60 | 20.77 | 48.1 | 2 | 11 |
+| `quality` | 12.57 | 18.78 | 53.2 | 11 | 2 |
+| `balanced` | 11.32 | 17.07 | 58.6 | 11 | 2 |
+| `speed` | 8.98 | 15.34 | 65.2 | 12 | 1 |
+
+`speed` takes the upscaler from 14.86 ms to 8.98 ms, which is 40 percent off, and the frame rate from
+47.8 to 65.2. `balanced` gives up a quarter of the upscaler time and is hard to tell from stock.
+
+The frametimes in that table carry the cost of the measurement itself, because timestamps around
+every dispatch are not free. The table below has the numbers without it.
+
 ## What each one measured
 
 Upscaler time in milliseconds, at 1280x720 to 1920x1080 with FSR 4.1.1b, one scene per card. Blank

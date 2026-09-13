@@ -260,17 +260,19 @@ The logs are in `evidence/fsr-4.0.2-vs-4.1.1/` and `evidence/mesa-26.2.2-vs-our-
 
 ## Upscaler times with the tuned shaders
 
-The numbers above are whole frames with the driver patch alone. The table below is the upscaler pass
-only, at 1280x720 to 1920x1080 with FSR 4.1.1b, which is what the layer changes.
+The numbers above are whole frames with the driver patch alone. The table below is the upscaler
+itself, measured with GPU timestamps around every network dispatch, on an RX 570 in Pragmata at
+1280x720 to 1920x1080 with FSR 4.1.1b. `FSR4_PROFILE=1` produces these numbers on your own card.
 
-| shaders | Vega 56 | RX 570 | picture |
+| set | upscaler GPU ms | fps | picture |
 |---|---:|---:|---|
-| stock FSR4 | 7.5 | about 14.5 | the reference |
-| weights baked in, exact | 7.5 | 14 | bit-identical to stock |
-| 5-bit packing, all network passes | 6 | 14.6 | no visible change |
-| `quality` set | 4.0 to 4.5 | 13 | hard to tell from stock |
-| `balanced` set | 3.5 | 11 | very close to stock |
-| `speed` set | 3 to 5 | 9.5 | visibly softer |
+| `off` | 14.86 | 47.8 | FSR4's own shaders, the reference |
+| `lossless` | 14.60 | 48.1 | bit-identical |
+| `quality` | 12.57 | 53.2 | hard to tell from stock |
+| `balanced` | 11.32 | 58.6 | very close to stock |
+| `speed` | 8.98 | 65.2 | visibly softer |
+
+A Vega 56 gains far more. There the upscaler goes from 7.5 ms to about 3 ms.
 
 The Vega gains far more than Polaris. Polaris already runs FSR4's own code at one vector instruction
 per multiply, because it extracts weight bytes on the scalar unit, so there is less to win. The Vega
