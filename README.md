@@ -71,15 +71,23 @@ for your card and your vkd3d.
 
 ## What you need
 
-You need two patches at two different layers. One alone does nothing useful.
+Three parts. The first two are required, the third is what the tuned shaders need.
 
-| layer | what | where |
+| part | what it does | where |
 |---|---|---|
-| Mesa / RADV | NIR rules that emit `v_mad_i32_i24` | `patches/mesa-26.2.2-nir-imul24-int8.patch` |
-| vkd3d-proton | decomposes FSR4's int8 dot product, and adds the `FSR4_DOT_MODE` switch | `vkd3d-proton/`, source in `patches/dxil-spirv-fsr4-int8.patch` and `patches/vkd3d-proton-fsr4.patch` |
+| Mesa / RADV | NIR rules that emit `v_mad_i32_i24`, so an int8 multiply-add costs one instruction | `patches/mesa-26.2.2-nir-imul24-int8.patch`, prebuilt in `radv/` |
+| vkd3d-proton | routes FSR4's int8 multiplies into the 32-bit form the driver patch matches, through `FSR4_DOT_MODE` | `vkd3d-proton/`, source in `patches/dxil-spirv-fsr4-int8.patch` and `patches/vkd3d-proton-fsr4.patch` |
+| Vulkan layer | swaps FSR4's network shaders for tuned ones at run time | `tools/fsr4_layer/` |
+
+The driver patch is the one that makes FSR4 usable at all on GCN4. The vkd3d build matters for two
+reasons: it carries `FSR4_DOT_MODE=i32`, which is what the driver patch keys on, and the shipped
+shader sets are built against the SPIR-V that this build produces. With a different vkd3d the layer
+finds no match and changes nothing, which is harmless, and `tools/fsr4_tune` rebuilds the sets.
+
+The layer is optional. Without it you get stock FSR4 shaders on the patched driver.
 
 Use `patches/mesa-26.2.2-nir-imul24-int8.patch` for Mesa 26.2.2. `patches/mesa-nir-imul24-int8.patch`
-is the original against 26.1.6; it also applies to 26.2.2, but with line offsets.
+is the original against 26.1.6. It also applies to 26.2.2, but with line offsets.
 
 Prebuilt copies of everything, with checksums, are listed in `CHECKSUMS.md`.
 
@@ -88,8 +96,9 @@ Prebuilt copies of everything, with checksums, are listed in `CHECKSUMS.md`.
 ## Prebuilt binaries
 
 If you would rather not build anything, the
-[latest release](https://github.com/Schaka/fsr4-gfx803/releases/latest) has the patched RADV and
-the patched vkd3d-proton attached, with an `install.sh`. Steps 2, 3 and 4 below still apply.
+[latest release](https://github.com/Schaka/fsr4-gfx803/releases/latest) has the patched RADV, the
+patched vkd3d-proton, the Vulkan layer and the three shader sets attached, with an `install.sh`.
+The numbered steps below still describe what that script leaves to you.
 
 ---
 
@@ -158,9 +167,23 @@ Both are required. Proton re-syncs the prefix from its own install on every laun
 the prefix reverts silently. The install copy is read-only, so `chmod u+w` it first. Verify with
 `md5sum` afterwards.
 
+This build is also what the shipped shader sets were built against. Another vkd3d produces different
+SPIR-V, the layer then matches nothing, and `tools/fsr4_tune` is the way to rebuild the sets.
+
 ---
 
-## 4. Set up OptiScaler
+## 4. Build the Vulkan layer
+
+```bash
+cd tools/fsr4_layer
+gcc -O2 -fPIC -shared -o libfsr4_layer.so fsr4_layer.c -lpthread
+```
+
+That is all it needs. `fsr4-run` finds the layer and the sets next to itself.
+
+---
+
+## 5. Set up OptiScaler
 
 Install OptiScaler 0.9.4 into the game directory, with an FSR4 4.1.1 upscaler DLL. The stock 4.1.1
 DLL and the 4.1.1b INT8 build both work, and both are in `fsr4_dlls/`.
@@ -176,7 +199,7 @@ Fsr4ForceEnableInt8=true
 
 ---
 
-## 5. Launch
+## 6. Launch
 
 ```bash
 VK_DRIVER_FILES=$HOME/.local/share/radv-fsr4/radeon_icd.x86_64.json \
