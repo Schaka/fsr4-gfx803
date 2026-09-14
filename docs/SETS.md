@@ -3,10 +3,12 @@
 Every set is a directory of SPIR-V under `tools/fsr4_layer/sets/`. The Vulkan layer swaps in the
 shaders it has, and leaves everything else alone. Pick one with `FSR4_SET`.
 
-Four aliases cover the common cases: `lossless` is `exact`, `quality` is `fin15`, `balanced` is
-`fin25`, and `speed` is `prune16`. Everything else is named directly. `FSR4_SET=off` keeps the layer
-loaded and replaces no shader, which still gives you the dot product rewrite. `FSR4_SET=none` takes
-the layer out of the process.
+Four tier names cover the common cases: `lossless`, `quality`, `balanced` and `speed`. Each one
+stands for a different set on each of the three upscaler DLLs, because the fastest set is not the
+same on all three, so `FSR4_DLL` decides what a tier means. The tables live in `aliases.stock`,
+`aliases.bc250` and `aliases.hybrid` next to the sets, and `DLLS.md` describes the three DLLs.
+Everything else is named directly. `FSR4_SET=off` keeps the layer loaded and replaces no shader,
+which still gives you the dot product rewrite. `FSR4_SET=none` takes the layer out of the process.
 
 Every number below sits on top of that rewrite. On an RX 570 in Pragmata the rewrite alone takes 4 ms
 off the upscaler, with no change to the picture.
@@ -99,6 +101,14 @@ variants, and they do not predict what you will see, so try a few in a game you 
 **The card matters more than the set.** A Vega 56 gains far more than an RX 570. Polaris already runs
 FSR4's own code at one vector instruction per multiply, because it extracts weight bytes on the
 scalar unit. There is less to win there, and a set built for one card can be slower on another.
+
+**A coarser set can be the faster one, and not only because it does less work.** These shaders are
+large. The pass9 shader is over half a megabyte of SPIR-V, and the passes around it are larger
+still. Between the packing variants of that one shader, the 3-bit version is 0.14 ms of frametime
+faster than the 4-bit and 0.65 ms faster than the 5-bit, in that order, with no exception. Fewer
+bits in a weight means more of them fit the inline constant range the vector instructions encode
+directly, so the code is both shorter and smaller. Rank variants by what they measure, not by what
+their name implies.
 
 **Pruning looks worse than quantization at equal measured error.** Pruning removes a share of every
 sum, which biases the result, while quantization spreads a small unbiased error over every term.
