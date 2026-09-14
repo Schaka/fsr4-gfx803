@@ -264,15 +264,21 @@ The numbers above are whole frames with the driver patch alone. The table below 
 itself, measured with GPU timestamps around every network dispatch, on an RX 570 in Pragmata at
 1280x720 to 1920x1080 with FSR 4.1.1b. `FSR4_PROFILE=1` produces these numbers on your own card.
 
-| set | upscaler GPU ms | fps | picture |
-|---|---:|---:|---|
-| `off` | 14.86 | 47.8 | FSR4's own shaders, the reference |
-| `lossless` | 14.60 | 48.1 | bit-identical |
-| `quality` | 12.57 | 53.2 | hard to tell from stock |
-| `balanced` | 11.32 | 58.6 | very close to stock |
-| `speed` | 8.98 | 65.2 | visibly softer |
+| configuration | upscaler GPU ms | picture |
+|---|---:|---|
+| layer neutral, the control | 18.93 | FSR4 as it arrives |
+| `off`, dot products rewritten | 14.86 | unchanged, the rewrite is exact |
+| `lossless` | 14.60 | bit-identical |
+| `quality` | 12.57 | hard to tell from stock |
+| `balanced` | 11.32 | very close to stock |
+| `speed` | 8.98 | visibly softer |
 
-A Vega 56 gains far more. There the upscaler goes from 7.5 ms to about 3 ms.
+The control is the layer loaded with `FSR4_SET=off FSR4_NO_SDOT_EXPAND=1`, so it sets the same
+vkd3d-proton options and changes nothing else. The dot product rewrite alone takes 4 ms off the
+upscaler without touching the picture, and `speed` takes off 53 percent.
+
+A Vega 56 gains far more. There the upscaler goes from 7.5 ms to about 3 ms. `docs/SETS.md` has the
+frametimes and every other set.
 
 The Vega gains far more than Polaris. Polaris already runs FSR4's own code at one vector instruction
 per multiply, because it extracts weight bytes on the scalar unit, so there is less to win. The Vega

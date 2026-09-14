@@ -8,8 +8,8 @@ Four aliases cover the common cases: `lossless` is `exact`, `quality` is `fin15`
 loaded and replaces no shader, which still gives you the dot product rewrite. `FSR4_SET=none` takes
 the layer out of the process.
 
-Every number below sits on top of that rewrite. On an RX 570 in Pragmata it is worth 2.5 ms of whole
-frame time on its own, with no change to the picture at all.
+Every number below sits on top of that rewrite. On an RX 570 in Pragmata the rewrite alone takes 4 ms
+off the upscaler, with no change to the picture.
 
 ## How the rewrites work
 
@@ -35,19 +35,33 @@ stays under the budget in the name. FSR4's own shader is kept where nothing beat
 GPU time rather than a frametime. RX 570, Pragmata, 1280x720 to 1920x1080, FSR 4.1.1b, one scene,
 stock vkd3d-proton, patched RADV throughout.
 
-| set | upscaler GPU ms | frametime ms | fps | shaders replaced | dot products rewritten |
+| configuration | upscaler GPU ms | frametime ms | fps | shaders replaced | dot products rewritten |
 |---|---:|---:|---:|---:|---:|
+| layer neutral | 18.93 | 26.32 | 38.0 | 0 | 0 |
 | `off` | 14.86 | 20.90 | 47.8 | 0 | 13 |
 | `lossless` | 14.60 | 20.77 | 48.1 | 2 | 11 |
 | `quality` | 12.57 | 18.78 | 53.2 | 11 | 2 |
 | `balanced` | 11.32 | 17.07 | 58.6 | 11 | 2 |
 | `speed` | 8.98 | 15.34 | 65.2 | 12 | 1 |
 
-`speed` takes the upscaler from 14.86 ms to 8.98 ms, which is 40 percent off, and the frame rate from
-47.8 to 65.2. `balanced` gives up a quarter of the upscaler time and is hard to tell from stock.
+The first row is the control: the layer is loaded and sets the same vkd3d-proton options, but changes
+no shader and rewrites no dot product (`FSR4_SET=off FSR4_NO_SDOT_EXPAND=1`). Everything below it is
+the layer's own doing.
 
-The frametimes in that table carry the cost of the measurement itself, because timestamps around
-every dispatch are not free. The table below has the numbers without it.
+The dot product rewrite alone is worth 4 ms of upscaler time, 18.93 down to 14.86, with no change to
+the picture. `speed` reaches 8.98 ms, which is 53 percent off the control. `balanced` reaches
+11.32 ms and is hard to tell from stock.
+
+Timestamps around every dispatch are not free, so those frametimes carry the cost of the measurement.
+Without it, on the same scene and the same six configurations:
+
+| configuration | frametime ms | fps |
+|---|---:|---:|
+| `off` | 23.25 | 43.0 |
+| `lossless` | 23.41 | 42.7 |
+| `quality` | 20.84 | 48.0 |
+| `balanced` | 19.01 | 52.6 |
+| `speed` | 17.00 | 58.8 |
 
 ## What each one measured
 

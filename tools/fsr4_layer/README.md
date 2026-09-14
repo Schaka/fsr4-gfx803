@@ -115,6 +115,6 @@ The Vega gains far more, because Polaris already runs FSR4's own code at one ins
 multiply. Try several sets. The measured error cannot see flicker, and at equal measured error
 pruning looks worse than quantization.
 
-The dot product rewrite is worth having on its own. Whole frames on an RX 570 in Pragmata, with the
-patched RADV throughout: 25.99 ms with the layer out of the process, 23.50 ms with the rewrite and no
-shader replaced, and 19.12 ms with the `balanced` set on top.
+The dot product rewrite is worth having on its own, and it changes nothing you can see. Upscaler GPU
+time on an RX 570 in Pragmata, patched RADV throughout: 18.93 ms with the layer changing nothing,
+14.86 ms with the rewrite and no shader replaced, 11.32 ms with `balanced`, and 8.98 ms with `speed`.
