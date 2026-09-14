@@ -386,7 +386,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateComputePipelines(
     if (r == VK_SUCCESS && dd->prof.enabled)
         for (uint32_t i = 0; i < count; i++) {
             const VkShaderModuleCreateInfo *mi = inline_module(&infos[i]);
-            prof_note_pipeline(dd, pipelines[i], mi ? mi->codeSize : module_size_of(infos[i].stage.module));
+            uint64_t ph = mi ? spirv_hash(mi->pCode, mi->codeSize) : module_hash(infos[i].stage.module);
+            prof_note_pipeline(dd, pipelines[i],
+                               mi ? mi->codeSize : module_size_of(infos[i].stage.module), ph);
         }
     if (codes)
         for (uint32_t i = 0; i < count; i++)

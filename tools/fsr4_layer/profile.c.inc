@@ -32,7 +32,8 @@ static void prof_init(struct device_data *dd)
 }
 
 /* Called for every compute pipeline the layer sees created. */
-static void prof_note_pipeline(struct device_data *dd, VkPipeline pipeline, size_t module_size)
+static void prof_note_pipeline(struct device_data *dd, VkPipeline pipeline, size_t module_size,
+                               uint64_t hash)
 {
     struct prof_state *p = &dd->prof;
     if (!p->enabled || pipeline == VK_NULL_HANDLE)
@@ -40,8 +41,12 @@ static void prof_note_pipeline(struct device_data *dd, VkPipeline pipeline, size
     if (module_size < p->min_size)
         return;
     pthread_mutex_lock(&g_lock);
-    if (p->tracked_count < PROF_MAX_PIPELINES)
-        p->tracked[p->tracked_count++] = pipeline;
+    if (p->tracked_count < PROF_MAX_PIPELINES) {
+        p->tracked[p->tracked_count] = pipeline;
+        p->tracked_hash[p->tracked_count] = hash;
+        p->tracked_size[p->tracked_count] = module_size;
+        p->tracked_count++;
+    }
     pthread_mutex_unlock(&g_lock);
 }
 
@@ -86,11 +91,15 @@ static void prof_collect(struct device_data *dd)
             continue;
         p->slots[i].pending = false;
         if (ts[1] > ts[0]) {
-            p->total_ms += (double)(ts[1] - ts[0]) * p->timestamp_period / 1e6;
+            double ms = (double)(ts[1] - ts[0]) * p->timestamp_period / 1e6;
+            p->total_ms += ms;
+            p->tracked_ms[p->slots[i].pipeline] += ms;
             p->dispatches++;
         }
     }
 }
+
+static void prof_report_each(struct prof_state *p);
 
 /* One line per interval: how much GPU time the upscaler took, per frame. */
 static void prof_report(struct device_data *dd)
@@ -109,9 +118,41 @@ static void prof_report(struct device_data *dd)
     fprintf(stderr, "fsr4_layer: upscaler %.1f ms/s over %.1f s, %.0f dispatches/s\n",
             ms / secs, secs, disp / secs);
 
+    if (getenv("FSR4_PROFILE_EACH"))
+        prof_report_each(p);
+
     p->last_report = now;
     p->last_ms = p->total_ms;
     p->last_dispatches = p->dispatches;
+}
+
+/* Which shader the time is actually in. Slowest first, because that is the only one worth work. */
+static void prof_report_each(struct prof_state *p)
+{
+    unsigned order[PROF_MAX_PIPELINES];
+    unsigned n = p->tracked_count < PROF_MAX_PIPELINES ? p->tracked_count : PROF_MAX_PIPELINES;
+    for (unsigned i = 0; i < n; i++)
+        order[i] = i;
+    for (unsigned i = 1; i < n; i++) {
+        unsigned k = order[i];
+        int j = (int)i - 1;
+        while (j >= 0 && p->tracked_ms[order[j]] < p->tracked_ms[k]) {
+            order[j + 1] = order[j];
+            j--;
+        }
+        order[j + 1] = k;
+    }
+    double secs = prof_now() - p->started;
+    fprintf(stderr, "fsr4_layer: per shader over %.1f s, slowest first\n", secs);
+    for (unsigned i = 0; i < n && i < 40; i++) {
+        unsigned k = order[i];
+        if (!p->tracked_runs[k])
+            continue;
+        fprintf(stderr, "fsr4_layer:   %016llx %8zu bytes %8.1f ms/s %6lu runs %7.3f ms each\n",
+                (unsigned long long)p->tracked_hash[k], p->tracked_size[k],
+                p->tracked_ms[k] / secs, p->tracked_runs[k],
+                p->tracked_ms[k] / p->tracked_runs[k]);
+    }
 }
 
 static void prof_summary(struct device_data *dd)
@@ -119,6 +160,8 @@ static void prof_summary(struct device_data *dd)
     struct prof_state *p = &dd->prof;
     if (!p->enabled)
         return;
+    if (getenv("FSR4_PROFILE_EACH"))
+        prof_report_each(p);
     double secs = prof_now() - p->started;
     if (!p->dispatches || secs <= 0)
         return;

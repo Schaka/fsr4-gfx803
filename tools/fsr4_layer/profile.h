@@ -17,6 +17,8 @@
  *   FSR4_PROFILE       1 turns this on.
  *   FSR4_PROFILE_MIN   module size in bytes that counts as a network shader. Default 40000.
  *   FSR4_PROFILE_EVERY seconds between report lines. Default 5.
+ *   FSR4_PROFILE_EACH   1 also reports every shader separately, slowest first, so it is clear which
+ *                       pass the time is actually in.
  */
 
 #ifndef FSR4_PROFILE_H
@@ -38,6 +40,9 @@ struct prof_state {
     /* Pipelines built from a module big enough to be a network shader. */
     VkPipeline tracked[PROF_MAX_PIPELINES];
     unsigned long tracked_runs[PROF_MAX_PIPELINES];
+    double tracked_ms[PROF_MAX_PIPELINES];
+    uint64_t tracked_hash[PROF_MAX_PIPELINES];
+    size_t tracked_size[PROF_MAX_PIPELINES];
     unsigned tracked_count;
 
     struct {
