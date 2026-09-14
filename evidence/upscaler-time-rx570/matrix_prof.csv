@@ -1,0 +1,7 @@
+set,upscaler_ms_per_s,fps,upscaler_ms_per_frame,frametime_ms,replaced,expanded
+none,,59.115,,16.92,0,0
+off,710.7,47.838,14.86,20.90,0,13
+lossless,702.9,48.146,14.60,20.77,2,11
+quality,669.4,53.247,12.57,18.78,11,2
+balanced,662.8,58.570,11.32,17.07,11,2
+speed,585.3,65.204,8.98,15.34,12,1

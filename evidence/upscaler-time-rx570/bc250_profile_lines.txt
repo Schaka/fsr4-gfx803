@@ -1,0 +1,6 @@
+fsr4_layer: upscaler 193.7 ms/s over 10.0 s, 480 dispatches/s
+fsr4_layer: upscaler 193.5 ms/s over 10.0 s, 480 dispatches/s
+fsr4_layer: upscaler 192.1 ms/s over 10.0 s, 477 dispatches/s
+fsr4_layer: upscaler 194.0 ms/s over 10.0 s, 480 dispatches/s
+---dispatch check
+22330

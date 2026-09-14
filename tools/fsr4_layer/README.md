@@ -90,8 +90,8 @@ prints the GPU time they took.
 
 The report is per second of wall time, because the layer never sees the game's frames. Divide by the
 frame rate for the cost per frame, and divide the dispatch rate by the same number to get the passes
-per frame. That second number is worth checking: FSR4 4.1.1 runs about 26 network dispatches per
-frame, and a build that runs far fewer is not upscaling, whatever its frame rate says.
+per frame. That second number is worth checking. FSR4 4.1.1 runs a few dozen network dispatches per
+frame. A build that runs a handful is not upscaling, whatever its frame rate says.
 
 Both timestamps are written at the bottom of the pipe, so a dispatch is measured from the completion
 of the work before it. That includes any gap between passes, which makes the number an upper bound on

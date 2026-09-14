@@ -25,8 +25,9 @@ settings the fork asks for. The layer reports the GPU time.
 | FSR4 4.1.1b | 24.3 ms | 26.2 | 30.66 ms |
 | BC-250 RC9 | 1.6 ms | 4.0 | 8.25 ms |
 
-FSR4 runs about 26 network dispatches per frame. The BC-250 build runs four. It is not upscaling
-faster, it is not upscaling. Every present returns `DXGI_ERROR_INVALID_CALL`, and on screen the frame
+FSR4 runs 26 network dispatches per frame here, and 29 or more in the configurations measured in
+`evidence/upscaler-time-rx570/`. The BC-250 build runs four. It is not upscaling faster, it is not
+upscaling. Every present returns `DXGI_ERROR_INVALID_CALL`, and on screen the frame
 is a wrongly placed copy of part of the image.
 
 The DLL loads, the model selection hook binds, the context is created and the dispatches begin, so
