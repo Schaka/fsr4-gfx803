@@ -32,3 +32,16 @@ not running.
 The BC-250 rows are the counter-example that makes the dispatch rate worth reading. That build
 reports 1.6 ms and 121 fps, and runs four network dispatches per frame against 29 and more here. It
 is not upscaling. `notes/BC250_DLL.md` has the detail.
+
+## AMD's FSR SDK sample
+
+The sample runs on the weston compositor the rig uses, not on headless sway, where it dies at swap
+chain creation with `Invalid parameter`. On weston the layer rewrites 13 dot products in it, so the
+driver patch reaches the sample as well.
+
+The shipped shader sets replace nothing there. The sample carries its own FSR4 DLL, which compiles
+to different SPIR-V, and a set is keyed to the SPIR-V it was built against. Tuning for the sample
+means a capture and tune cycle against that DLL, which `tools/fsr4_tune` supports.
+
+The sample's own upscaler time is not recorded here. Two runs disagreed by a factor of three. The
+sample changed its render flow between them, and a number taken from that is not worth keeping.
