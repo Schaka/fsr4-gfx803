@@ -36,15 +36,24 @@ Two things this script does NOT do for you.
    If ~/.drirc already exists, merge it by hand instead of overwriting.
    Then check:  vulkaninfo | grep shaderFloat16      (must say true)
 
-2. Set up OptiScaler 0.9.4 in the game directory, with an FSR4 4.1.1 upscaler
-   DLL, and set Dx12Upscaler=fsr31, UpscalerIndex=0, Fsr4Update=true and
+2. Set up the upscaler in the game directory. There are two ways, and
+   README.md says which one to pick.
+
+   The stock path: OptiScaler 0.9.4 with an FSR4 4.1.1 upscaler DLL, and
+   Dx12Upscaler=fsr31, UpscalerIndex=0, Fsr4Update=true and
    Fsr4ForceEnableInt8=true in OptiScaler.ini.
+
+   The BC-250 path: OptiScaler 10.0.0-pre1 or newer with a DLL you build
+   yourself. Follow bc250/README.md, then bc250/hybrid.md.
+
+Set PROTON_FSR4_UPGRADE=0 as well, or Proton replaces the FSR4 DLL on every
+launch and undoes whichever one you installed.
 
 Then launch the game.
 
   Steam, in the launch options:
     VK_DRIVER_FILES=$DEST/radeon_icd.x86_64.json \\
-    FSR4_SET=balanced $SRC/layer/fsr4-run %command%
+    PROTON_FSR4_UPGRADE=0 FSR4_SET=balanced $SRC/layer/fsr4-run %command%
 
   Heroic: put $SRC/layer/fsr4-run in Settings, Advanced, Wrapper command, and
   add VK_DRIVER_FILES and FSR4_SET to the environment variables.

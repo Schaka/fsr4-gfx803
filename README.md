@@ -3,7 +3,7 @@
 Run AMD's FSR4 upscaler on GCN4 cards, such as the RX 470, RX 480, RX 570 and RX 580, and make it
 fast enough to use.
 
-Two pieces do the work.
+Three pieces do the work.
 
 1. **A patched RADV.** GCN4 has no hardware `dp4a`, so every int8 multiply-accumulate in FSR4's
    network is emulated. Stock Mesa uses full 32-bit multiplies. The patch emits `v_mad_i32_i24`
@@ -15,6 +15,13 @@ Two pieces do the work.
    two output channels share one multiply through a quantized, packed operand. A shader the driver
    rejects falls back to the game's own. On a Vega 56 the upscaler pass goes from 7.5 ms to 3 ms, and
    on an RX 570 from about 14.5 ms to 9.5 ms.
+
+3. **A choice of upscaler DLL.** `stock` is AMD's own. `bc250` is the `daniel-h-0/bc250-fsr4-fork`
+   rebuild at `v4.0.0-rc10`, made to run on GCN4, whose shaders carry their weights as constants.
+   `hybrid` is that rebuild with ten model passes handed back to AMD's shaders, so the tuned sets
+   can replace them, and it is the fastest of the three. `FSR4_DLL` tells the launcher which one you
+   installed, because the four tier names below map to a different shader set on each.
+   `docs/DLLS.md` describes all three.
 
 Nothing else is patched. Your normal Proton and vkd3d-proton are used as they are.
 
@@ -30,7 +37,8 @@ Install the driver as described below, then put the launcher in front of the gam
 **Steam.** In the game's launch options:
 
 ```
-FSR4_SET=balanced /path/to/tools/fsr4_layer/fsr4-run %command%
+FSR4_DLL=stock FSR4_SET=balanced PROTON_FSR4_UPGRADE=0 \
+    /path/to/tools/fsr4_layer/fsr4-run %command%
 ```
 
 **Heroic.** Settings, Advanced, Wrapper command:
@@ -39,7 +47,9 @@ FSR4_SET=balanced /path/to/tools/fsr4_layer/fsr4-run %command%
 /path/to/tools/fsr4_layer/fsr4-run
 ```
 
-and add `FSR4_SET=balanced` to the environment variables in the same panel.
+and add `FSR4_DLL`, `FSR4_SET=balanced` and `PROTON_FSR4_UPGRADE=0` to the environment variables in
+the same panel. Without `PROTON_FSR4_UPGRADE=0` Proton replaces the FSR4 DLL on every launch and
+undoes whichever one you installed.
 
 **Anything else.** Put `fsr4-run` in front of the command.
 
@@ -52,7 +62,8 @@ gcc -O2 -fPIC -shared -o libfsr4_layer.so fsr4_layer.c -lpthread
 
 ### The sets
 
-`FSR4_SET` picks how far the shaders are rewritten. Four names cover the common cases.
+`FSR4_SET` picks how far the shaders are rewritten. Four names cover the common cases, and each DLL
+maps them to its own best set, so read this table together with `FSR4_DLL` in `docs/DLLS.md`.
 
 | name | what it does | how it looks |
 |---|---|---|

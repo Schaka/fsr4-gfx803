@@ -33,14 +33,26 @@ cp "$REPO/tools/fsr4_layer/fsr4_layer.c" \
    "$REPO/tools/fsr4_layer/spv_sdot.c.inc" \
    "$REPO/tools/fsr4_layer/autotune.h" \
    "$REPO/tools/fsr4_layer/autotune.c.inc" \
+   "$REPO/tools/fsr4_layer/profile.h" \
+   "$REPO/tools/fsr4_layer/profile.c.inc" \
    "$REPO/tools/fsr4_layer/fsr4_layer.json" \
    "$REPO/tools/fsr4_layer/fsr4-run" \
    "$REPO/tools/fsr4_layer/README.md" "$DIR/layer/"
 cp -r "$REPO/tools/fsr4_layer/sets" "$DIR/layer/"
 cp "$REPO/docs/SETS.md" "$DIR/layer/SETS.md"
+cp "$REPO/docs/DLLS.md" "$DIR/layer/DLLS.md"
 # The layer README points at the repository layout, which the archive does not have.
 sed -i 's#\.\./\.\./docs/SETS\.md#SETS.md#g; s#\.\./fsr4_tune/#the repository, tools/fsr4_tune/#g' \
     "$DIR/layer/README.md"
+
+# The second path: the tools that turn the BC-250 fork's DLL into one that runs on GCN4. The DLL
+# itself is not shipped. It is built from that fork plus the pinned SDK DLL, and its licence forbids
+# disassembly, which is how its shader edits are produced. Users build it themselves.
+mkdir -p "$DIR/bc250"
+cp "$REPO/tools/bc250/wave64_fix.py" "$REPO/tools/bc250/fp32_prepass.py" \
+   "$REPO/tools/bc250/int24_postpass.py" "$REPO/tools/bc250/build_variant.py" \
+   "$REPO/tools/bc250/prune_weights.py" \
+   "$REPO/tools/bc250/README.md" "$REPO/tools/bc250/hybrid.md" "$DIR/bc250/"
 
 cp "$REPO/tools/release_install.sh" "$DIR/install.sh"
 cp "$REPO/tools/release_readme.md" "$DIR/README.md"
@@ -50,3 +62,17 @@ sed -i "s/RELEASE_TAG/$TAG/g" "$DIR/README.md" "$DIR/install.sh"
 ( cd "$OUT" && tar czf "$NAME.tar.gz" "$NAME" )
 echo "$OUT/$NAME.tar.gz"
 du -sh "$OUT/$NAME.tar.gz"
+
+# The two rebuilt DLLs go in their own archive. They are large, and the rest of the release is
+# useful without them. FSR4_DLLS points at a directory holding the two built files.
+if [ -n "${FSR4_DLLS:-}" ] && [ -d "$FSR4_DLLS" ]; then
+    DDIR="$OUT/$NAME-dlls"
+    rm -rf "$DDIR"; mkdir -p "$DDIR"
+    cp "$FSR4_DLLS/amd_fidelityfx_upscaler_dx12.bc250.dll" \
+       "$FSR4_DLLS/amd_fidelityfx_upscaler_dx12.hybrid.dll" "$DDIR/"
+    cp "$REPO/docs/DLLS.md" "$DDIR/README.md"
+    ( cd "$DDIR" && find . -type f ! -name MD5SUMS -printf '%P\n' | sort | xargs md5sum > MD5SUMS )
+    ( cd "$OUT" && tar czf "$NAME-dlls.tar.gz" "$NAME-dlls" )
+    echo "$OUT/$NAME-dlls.tar.gz"
+    du -sh "$OUT/$NAME-dlls.tar.gz"
+fi

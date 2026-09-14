@@ -8,12 +8,18 @@
 # Anything else: just put it in front of the command.
 #
 # Environment:
+#   FSR4_DLL      which upscaler DLL the game runs. Default: stock
+#                   stock    AMD's own FSR4 DLL
+#                   bc250    the BC-250 fork's DLL, rebuilt for GCN4
+#                   hybrid   that build with the model passes left to AMD's shaders
+#                 It only picks which shader set each of the four names below stands for, because
+#                 the fastest set is not the same on every DLL. DLLS.md explains the three.
 #   FSR4_SET      which shader set to use. Default: balanced
-#                 Four names cover the common cases:
-#                   lossless   = exact, the same maths, only faster where baking wins
-#                   quality    = fin15, hard to tell from stock
-#                   balanced   = fin25, clearly faster, very close to stock
-#                   speed      = prune16, fastest, visibly softer
+#                 Four names cover the common cases, and each DLL maps them to its own best:
+#                   lossless   the same maths, bit for bit
+#                   quality    hard to tell from stock
+#                   balanced   clearly faster, very close to stock
+#                   speed      fastest, visibly softer
 #                 Everything measured is available by its own name. Run with FSR4_SET=list to see
 #                 them, and read the table in README.md before picking.
 #                 off        replace no shaders, but still rewrite the packed dot products
@@ -28,17 +34,28 @@
 set -u
 HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
 SET=${FSR4_SET:-balanced}
+DLL=${FSR4_DLL:-stock}
 SETS=${FSR4_SETS:-$HERE/sets}
 LAYER=${FSR4_LAYER:-$HERE}
 CACHE=${FSR4_CACHE:-$HOME/.cache/fsr4_opt/spirv}
 
+# Each DLL names its own set for each of the four tiers, because the same set is not the fastest
+# on all three. A missing table leaves the four names meaning nothing, and the set has to be named
+# directly.
+ALIASES="$SETS/aliases.$DLL"
+
 if [ "$SET" = list ]; then
     echo "sets in $SETS:" >&2
-    ls "$SETS" 2>/dev/null | grep -v '^keys\.txt$' | tr '\n' ' ' >&2
+    ls "$SETS" 2>/dev/null | grep -vE '^(keys\.txt|aliases\..*)$' | tr '\n' ' ' >&2
     echo >&2
-    echo "aliases: lossless=exact quality=fin15 balanced=fin25 speed=prune16" >&2
+    if [ -f "$ALIASES" ]; then
+        echo "tiers for FSR4_DLL=$DLL: $(grep -v '^#' "$ALIASES" | tr '\n' ' ')" >&2
+    else
+        echo "no tier table for FSR4_DLL=$DLL, so name a set directly" >&2
+    fi
+    echo "tables available: $(ls "$SETS"/aliases.* 2>/dev/null | xargs -r -n1 basename | sed 's/aliases\.//' | tr '\n' ' ')" >&2
     echo "off replaces nothing, none disables the layer" >&2
-    echo "see SETS.md next to this script, or docs/SETS.md in the repository" >&2
+    echo "see SETS.md and DLLS.md next to this script" >&2
     exit 0
 fi
 
@@ -49,10 +66,19 @@ if [ "$SET" = none ] || [ $# -eq 0 ]; then
 fi
 
 case "$SET" in
-    lossless) SET=exact ;;
-    quality)  SET=fin15 ;;
-    balanced) SET=fin25 ;;
-    speed)    SET=prune16 ;;
+    lossless|quality|balanced|speed)
+        if [ -f "$ALIASES" ]; then
+            RESOLVED=$(grep -E "^$SET=" "$ALIASES" | tail -1 | cut -d= -f2)
+        else
+            RESOLVED=""
+        fi
+        if [ -z "$RESOLVED" ]; then
+            echo "fsr4-run: FSR4_DLL=$DLL has no '$SET' tier. Name a set directly, or see DLLS.md." >&2
+            exec "$@"
+        fi
+        echo "fsr4-run: $DLL $SET -> $RESOLVED" >&2
+        SET=$RESOLVED
+        ;;
 esac
 
 if [ "$SET" != off ] && [ ! -d "$SETS/$SET" ]; then

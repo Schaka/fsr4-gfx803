@@ -1,0 +1,6 @@
+# Tier names for the BC-250 fork's DLL rebuilt for GCN4. It replaces all 348 shaders itself, so a
+# set has nothing left to match and every tier is the exact one.
+lossless=off
+quality=off
+balanced=off
+speed=off

@@ -1,0 +1,5 @@
+# Tier names for AMD's own FSR4 DLL. Each line is <tier>=<set directory in this folder>.
+lossless=exact
+quality=fin15
+balanced=fin25
+speed=prune16
