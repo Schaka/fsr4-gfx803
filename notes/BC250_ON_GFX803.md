@@ -14,8 +14,8 @@ vkd3d-proton refuses the compute pipeline:
     Failed to update compute state, ignoring dispatch
 
 Nothing reports a failure. The DLL loads, the model selection hook binds, the context is created and
-dispatches begin. The only sign is the dispatch count. The network runs four passes per frame where FSR4 runs about
-twenty six, and the picture becomes a wrongly placed copy of part of the frame.
+dispatches begin. The only sign is the dispatch count. The network runs four passes per frame where FSR4 runs about twenty six. The picture becomes a
+wrongly placed copy of part of the frame.
 
 `tools/bc250/wave64_fix.py` drops the requirement. DXIL writes it two ways, a range under tag 23 and
 a fixed size under tag 11, and both have to go: handling only the first leaves 14 shaders asking for
@@ -28,10 +28,18 @@ Upscaler GPU time on an RX 570 in Pragmata, 1280x720 to 1920x1080, measured with
 | build | upscaler ms | frametime ms |
 |---|---:|---:|
 | FSR4 4.1.1b | 15.18 | 21.08 |
-| BC-250 with the wave size fix | 12.8 | 18.8 |
-| the same, with the SDK's own pass11 | 12.7 | 18.4 |
+| BC-250 with the wave size fix | 12.85 | 18.90 |
+| the same, plus the SDK's own pass11 | 12.56 | 18.34 |
+| the same, plus the prepass in fp32 | 12.5 | 18.3 |
 
-The fork's own shaders are exact, so this costs no picture quality.
+Every shader involved is either AMD's own or an exact rewrite, so none of this costs picture
+quality.
+
+`tools/bc250/fp32_prepass.py` is the last of those. The prepass unpacks a pair of halves, converts
+each to a float, converts each straight back to a half, and multiplies in fp16. GCN4 runs fp16 at the same rate as fp32, so every one of those conversions is spent for nothing.
+The driver then converts each product back to fp32 to accumulate it. Promoting the whole fp16 subgraph takes the
+prepass from 1,820 instructions to 1,646. It is also more accurate: an fp32 multiply keeps 24 bits of
+product where fp16 keeps 11.
 
 ## Rebuilding
 
@@ -44,6 +52,19 @@ Its own `build.py` refuses a modified source, because it exists to prove that re
 `tools/bc250/build_variant.py` does the same work and takes the sources as they are, keeping every
 structural check in the fork's repacker. `SKIP_ENTRIES=pass11` keeps the SDK's own shader for one
 role and the fork's for the rest.
+
+## The instruction floor
+
+Every hot shader is close to the least work its maths can be expressed in, which is why the rewrites
+below do nothing. In the postpass, 3,676 of 6,103 instructions are the multiply-accumulates
+themselves, at 0.98 per multiply. In pass9 it is 27,418 of 44,706, at 0.95. The int8 to float
+conversion is free: the texture unit does it on load through `buffer_load_format_x`, so only a few
+hundred convert instructions exist for tens of thousands of multiplies.
+
+The GPU counters agree about where the limit is. During a run `gpu_busy_percent` reads 99.6 and
+`mem_busy_percent` reads 29.2, at full clocks, so this is bound by instruction issue and not by
+memory. That is also why a rewrite which leaves the instruction count alone changes nothing. Dropping
+weights really does remove instructions, and it is the only thing that moved the number.
 
 ## What does not transfer
 
