@@ -26,13 +26,22 @@
 struct spv_writer {
     uint32_t *w;
     size_t n, cap;
+    int failed;              /* set once an allocation fails, checked before the result is used */
 };
 
 static void spv_put(struct spv_writer *o, uint32_t v)
 {
+    if (o->failed)
+        return;
     if (o->n == o->cap) {
-        o->cap = o->cap ? o->cap * 2 : 4096;
-        o->w = realloc(o->w, o->cap * sizeof(uint32_t));
+        size_t cap = o->cap ? o->cap * 2 : 4096;
+        uint32_t *w = realloc(o->w, cap * sizeof(uint32_t));
+        if (!w) {
+            o->failed = 1;   /* the caller then leaves the module alone, which is always safe */
+            return;
+        }
+        o->w = w;
+        o->cap = cap;
     }
     o->w[o->n++] = v;
 }
@@ -142,6 +151,10 @@ static uint32_t *spv_expand_sdot(const uint32_t *code, size_t size, size_t *out_
         i += len;
     }
 
+    if (o.failed || o.n < 5) {
+        free(o.w);
+        return NULL;         /* the original module runs, which is correct, only slower */
+    }
     o.w[3] = bound;
     *out_size = o.n * sizeof(uint32_t);
     return o.w;
