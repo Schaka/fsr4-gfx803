@@ -256,43 +256,10 @@ whatever its frame rate says.
 
 ---
 
-## Results
-
-Measured on an RX 470 in Pragmata, real gameplay, upscaler running on every frame, one identical
-scene, 1280x720 upscaled to 1920x1080, with the dot product rewrite in place and FSR4's own network
-shaders. They answer which **version** of AMD's DLL to start from, and whether the driver patch
-earns its place. Which of the three rebuilt DLLs to run is a separate question, and `docs/DLLS.md`
-answers that one.
-
-| FSR4 version | driver | mean ms | fps |
-|---|---|---:|---:|
-| 4.1.1 stock | Mesa 26.2.2 + this patch | 27.32 | 36.6 |
-| 4.1.1b INT8 | Mesa 26.2.2 + this patch | 27.78 | 36.0 |
-| 4.1.1b INT8 | Mesa 26.2.2 stock | 63.35 | 15.8 |
-| 4.0.2 INT8 | Mesa 26.1.6 + this patch | 30.27 | 33.0 |
-| 4.0.2 INT8 | Mesa 26.2.2 + this patch | 30.38 | 32.9 |
-| 4.0.2 INT8 | Mesa 26.2.2 stock | 52.93 | 18.9 |
-
-* Use FSR 4.1.1 with the patch. It is 2.6 ms per frame faster than 4.0.2. The stock 4.1.1 DLL and
-  the 4.1.1b INT8 build perform the same.
-* The patch makes 4.1.1 2.28 times faster, and 4.0.2 1.75 times faster.
-* Upgrading Mesa on its own gains nothing. Without the patch, 4.1.1 is slower than 4.0.2.
-
-Stock Mesa 26.2.2 already contains upstream merge request 41178, which applies the same 24-bit idea
-to NIR's software `sdot_4x8` lowering. It helps, and it is not enough: with stock vkd3d-proton the
-FSR4 shaders do contain `OpSDot`, 4,264 of them across 13 modules, and letting Mesa lower them costs
-2.5 ms per frame more than the layer's own rewrite.
-
-The logs are in `evidence/fsr-4.0.2-vs-4.1.1/` and `evidence/mesa-26.2.2-vs-our-patch/`.
-
----
-
 ## What each DLL and tier costs
 
-The numbers above are whole frames with the driver patch alone, and they answer which version of
-AMD's DLL to start from. This table answers the other question: which of the three DLLs to run, and
-at which tier. RX 570, Pragmata, 1280x720 to 1920x1080, FSR 4.1.1b, one scene, ten configurations
-measured one after another and then again in a single batch, so the rows compare.
+RX 570, Pragmata, 1280x720 upscaled to 1920x1080, FSR 4.1.1b, one scene, ten configurations measured
+one after another and then again in a single batch, so the rows compare.
 
 | DLL | tier | frametime ms | fps | upscaler ms |
 |---|---|---:|---:|---:|
@@ -309,21 +276,28 @@ measured one after another and then again in a single batch, so the rows compare
 
 The `balanced` rows use `fin25`. Both DLLs ship `fin25_pack39` for that tier, which is `fin25` with
 a pass9 shader added, and that is a further 0.17 to 0.19 ms. Side by side, plain `fin25` is slightly
-the cleaner of the two, so name it directly if you would rather have the picture than the 0.19 ms. Running the whole table again with
-the GPU timestamps off moved no frametime by more than 0.05 ms, so the cost of measuring is not in
-these numbers. `docs/DLLS.md` describes the three DLLs and `FSR4_PROFILE=1` reproduces the upscaler
-column on your own card.
+the cleaner of the two, so name it directly if you would rather have the picture than the 0.19 ms.
+
+Running the whole table again with the GPU timestamps off moved no frametime by more than 0.05 ms,
+so the cost of measuring is not in these numbers. `docs/DLLS.md` describes the three DLLs, and
+`FSR4_PROFILE=1` reproduces the upscaler column on your own card.
 
 Against a control that loads the layer and changes nothing (`FSR4_SET=off FSR4_NO_SDOT_EXPAND=1`,
 18.93 ms on an earlier batch), the dot product rewrite alone takes about 4 ms off the upscaler
 without touching the picture.
 
-A Vega 56 gains far more. There the upscaler goes from 7.5 ms to about 3 ms. `docs/SETS.md` has the
-frametimes and every other set.
+Three earlier findings sit under all of the above. The driver patch is what makes FSR4 usable at
+all: on an RX 470 it takes 4.1.1 from 63.35 ms per frame to 27.78 ms, a factor of 2.28. Start from
+FSR 4.1.1 rather than 4.0.2, which is 2.6 ms per frame slower. And upgrading Mesa on its own gains
+nothing: stock Mesa 26.2.2 already carries upstream merge request 41178, which applies the same
+24-bit idea to NIR's software `sdot_4x8` lowering, and letting Mesa lower those 4,264 `OpSDot`
+instructions costs 2.5 ms per frame more than the layer rewriting them itself. The logs are in
+`evidence/fsr-4.0.2-vs-4.1.1/` and `evidence/mesa-26.2.2-vs-our-patch/`.
 
-The Vega gains far more than Polaris. Polaris already runs FSR4's own code at one vector instruction
-per multiply, because it extracts weight bytes on the scalar unit, so there is less to win. The Vega
-also rewards weight baking on its own, while on Polaris baking alone is close to a wash.
+A Vega 56 gains far more: there the upscaler goes from 7.5 ms to about 3 ms. Polaris already runs
+FSR4's own code at one vector instruction per multiply, because it extracts weight bytes on the
+scalar unit, so there is less to win. The Vega also rewards weight baking on its own, while on
+Polaris baking alone is close to a wash. `docs/SETS.md` has the frametimes and every other set.
 
 Two findings are worth knowing before you pick a set.
 
