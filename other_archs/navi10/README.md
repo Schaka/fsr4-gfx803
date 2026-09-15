@@ -65,8 +65,15 @@ does the opposite:
 | wave32, as the fork ships | 4.40 | 9.10 |
 | wave32, prepass in fp32 | 4.47 | 9.05 |
 
-About 0.1 ms in favour of wave64. Small, but it holds across both cycles and it means the fix earns
-its place on all three architectures, including the one that never needed it to function.
+About 0.1 ms in favour of wave64. It holds across both cycles, so it is real, but at 110 fps it is
+1.3 percent and nobody can see it: the two builds were compared side by side on the card and are
+indistinguishable in both picture and feel.
+
+So the wave64 build is not recommended here because it is faster. It is recommended because it is
+the `bc250` DLL that already ships, and using it means this card needs no binary of its own.
+Shipping the wave32 build to gain 0.1 ms would mean carrying a fifth DLL for a difference no one can
+observe. The useful conclusion is the other one: the wave64 fix costs nothing even on a card that
+runs waves of 32 natively, so one build covers all three architectures.
 
 ## How the DLL was built
 
