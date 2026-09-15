@@ -75,20 +75,25 @@ The upscaler column needs GPU timestamps around every dispatch. Running the same
 the timestamps switched off moved no frametime by more than 0.05 ms, so the cost of measuring is not
 in these numbers.
 
-The `balanced` row above uses `fin25`. The tier actually ships `fin25_pack39`, which is `fin25` with
-a pass9 shader added, and that is a further 0.19 ms: 11.12 ms against 11.31 ms.
+The `balanced` row above uses `fin25`. The tier ships `fin25_pack39`, which is `fin25` with a pass9
+shader added, and that is a further 0.19 ms: 11.12 ms against 11.31 ms. Side by side, plain `fin25`
+is slightly the cleaner of the two, so name it directly if you would rather have the picture than
+the 0.19 ms.
 
 Read the differences, not the absolutes. Your scene, your card and your resolution all move the
 whole table.
 
 ## Getting the DLLs
 
-`bc250` and `hybrid` ship as a separate download, because they are large and most of the archive is
-useful without them. Unpack it and copy the one you want to
-`OptiScaler/amd_fidelityfx_upscaler_dx12.dll` in the game directory.
+All three ship as a separate download, because they are large and most of the archive is useful
+without them. Unpack it and copy the one you want, renamed to
+`amd_fidelityfx_upscaler_dx12.dll`. `bc250` and `hybrid` go in the `OptiScaler/` folder of the game
+directory; `stock` goes in the game directory itself, because OptiScaler 0.9.4 looks for it there.
 
-You can also build either yourself from the fork plus AMD's SDK DLL. `bc250/README.md` gives the
-steps, and `bc250/hybrid.md` the one extra setting that makes the hybrid.
+You can also build either rebuilt DLL yourself from the fork plus AMD's SDK DLL. `bc250/README.md`
+gives the steps and `bc250/hybrid.md` the one extra setting that makes the hybrid.
+`bc250/REDOING_THE_HYBRID.md` is the procedure for re-deriving the split when the fork publishes a
+new version, which has to be measured again rather than carried over.
 
 Set `PROTON_FSR4_UPGRADE=0` whichever you use, or Proton replaces the DLL on every launch and
 silently undoes your choice.

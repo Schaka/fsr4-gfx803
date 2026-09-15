@@ -22,8 +22,9 @@ in full. The short version:
 * `hybrid` is that rebuild with ten model passes handed back to AMD's shaders, so the tuned sets can
   replace them. Fastest, and the only one where all four tiers do something.
 
-`bc250` and `hybrid` come as a separate download, `fsr4-gfx803-RELEASE_TAG-dlls.tar.gz`. You can
-also build either yourself: see `bc250/README.md`.
+All three come as a separate download, `fsr4-gfx803-RELEASE_TAG-dlls.tar.gz`. You can also build
+the two rebuilt ones yourself: see `bc250/README.md`, and `bc250/REDOING_THE_HYBRID.md` for redoing
+the hybrid against a future version of the fork.
 
 Each DLL takes the same four tier names, and maps each to its own best shader set:
 

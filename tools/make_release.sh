@@ -63,13 +63,17 @@ sed -i "s/RELEASE_TAG/$TAG/g" "$DIR/README.md" "$DIR/install.sh"
 echo "$OUT/$NAME.tar.gz"
 du -sh "$OUT/$NAME.tar.gz"
 
-# The two rebuilt DLLs go in their own archive. They are large, and the rest of the release is
-# useful without them. FSR4_DLLS points at a directory holding the two built files.
+# The three upscaler DLLs go in their own archive. They are large, and the rest of the release is
+# useful without them. FSR4_DLLS points at a directory holding the two rebuilt files; AMD's own
+# comes from this repository.
 if [ -n "${FSR4_DLLS:-}" ] && [ -d "$FSR4_DLLS" ]; then
     DDIR="$OUT/$NAME-dlls"
     rm -rf "$DDIR"; mkdir -p "$DDIR"
     cp "$FSR4_DLLS/amd_fidelityfx_upscaler_dx12.bc250.dll" \
        "$FSR4_DLLS/amd_fidelityfx_upscaler_dx12.hybrid.dll" "$DDIR/"
+    # AMD's own DLL goes in too, so one download covers all three paths.
+    cp "$REPO/fsr4_dlls/4.1.1b-int8/amd_fidelityfx_upscaler_dx12.dll" \
+       "$DDIR/amd_fidelityfx_upscaler_dx12.stock.dll"
     cp "$REPO/docs/DLLS.md" "$DDIR/README.md"
     ( cd "$DDIR" && find . -type f ! -name MD5SUMS -printf '%P\n' | sort | xargs md5sum > MD5SUMS )
     ( cd "$OUT" && tar czf "$NAME-dlls.tar.gz" "$NAME-dlls" )
