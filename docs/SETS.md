@@ -104,8 +104,8 @@ scalar unit. There is less to win there, and a set built for one card can be slo
 
 **A coarser set can be the faster one, and not only because it does less work.** These shaders are
 large. The pass9 shader is over half a megabyte of SPIR-V, and the passes around it are larger
-still. Between the packing variants of that one shader, the 3-bit version is 0.14 ms of frametime
-faster than the 4-bit and 0.65 ms faster than the 5-bit, in that order, with no exception. Fewer
+still. Between the packing variants of that one shader, the 3-bit version is 0.21 ms of frametime
+faster than the 4-bit and 0.66 ms faster than the 5-bit, in that order, with no exception. Fewer
 bits in a weight means more of them fit the inline constant range the vector instructions encode
 directly, so the code is both shorter and smaller. Rank variants by what they measure, not by what
 their name implies.

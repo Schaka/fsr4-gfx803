@@ -35,8 +35,8 @@ so it ran as AMD wrote it while every other role was replaced. The `pack3` set d
 grafting it on is worth 0.14 ms of frametime. The shipped `fin25_pack39` set is `fin25` with that one
 shader added.
 
-Which pass9 shader matters more than it should. The 3-bit packing beats the 4-bit by 0.14 ms and the
-5-bit by 0.65 ms, in that order and with no exception, even though coarser packing is the less
+Which pass9 shader matters more than it should. The 3-bit packing beats the 4-bit by 0.21 ms and the
+5-bit by 0.66 ms, in that order and with no exception, even though coarser packing is the less
 accurate one. Fewer bits in a weight means more of them fit the inline constant range the vector
 instructions encode directly, so the code is both shorter and smaller, and this shader is over half a
 megabyte of SPIR-V.
