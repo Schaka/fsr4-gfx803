@@ -1,8 +1,11 @@
 # Building the BC-250 FSR4 DLL for GCN4
 
-`daniel-h-0/bc250-fsr4-fork` rebuilds AMD's FSR4 upscaler DLL with its shaders rewritten by hand. It
-targets the BC-250, which is gfx1013. Three changes make it run well on gfx803, and it is then
-faster than stock FSR4 with no loss of picture quality.
+[`daniel-h-0/bc250-fsr4-fork`](https://github.com/daniel-h-0/bc250-fsr4-fork) rebuilds AMD's FSR4
+upscaler DLL with its shaders rewritten by hand. It targets the BC-250, which is gfx1013. Two
+changes make it run well on gfx803, and it is then faster than stock FSR4 with no loss of picture
+quality. Everything in this directory sits on top of that project: it wrote the shaders, and it
+made them verifiable by proving its DLL reproduces byte for byte. If you have a BC-250, use theirs
+directly rather than any of this.
 
 `../../notes/BC250_ON_GFX803.md` has the measurements, and the list of approaches that did not work.
 `hybrid.md` describes the faster arrangement, which combines this build with the tuned shader sets.

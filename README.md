@@ -380,7 +380,8 @@ RADV, in August 2026. The overlay frametime is from the title screen, not a benc
 | `evidence/` | logs backing the results above |
 | `tools/fsr4_layer/` | the Vulkan layer, its launcher, and every shader set |
 | `tools/fsr4_tune/` | the tuner that builds and scores the sets |
-| `tools/bc250/` | the scripts that rebuild the BC-250 fork's DLL for GCN4 |
+| `tools/bc250/` | the scripts that rebuild the BC-250 fork's DLL for GCN4, and how to redo it |
+| `tools/bench/` | the measurement harness behind every number here |
 | `tools/` | the benchmark and release scripts |
 | `docs/DLLS.md` | the three upscaler DLLs and when to use each |
 | `docs/SETS.md` | every shader set, what it measured, and how it looked |
@@ -393,3 +394,32 @@ hardware. They are a record of how the result was produced, not instructions for
 `data/roofline.md` covers what is and is not reachable on this hardware.
 
 Credentials are deliberately not recorded anywhere in this repository.
+
+---
+
+## Standing on other people's work
+
+**[`daniel-h-0/bc250-fsr4-fork`](https://github.com/daniel-h-0/bc250-fsr4-fork)** is the reason two
+of the three DLLs here exist. That project rebuilds AMD's FSR4 upscaler DLL with its shaders
+rewritten by hand, so the weights arrive as constants in the code instead of being streamed from a
+buffer. It targets the BC-250, a gfx1013 part, and none of it was written with Polaris in mind. It
+turns out to be worth a great deal here anyway: its postpass alone is 1.5 ms of frametime on a
+GCN4 card, and its pass6 and pass7 beat every shader this project tuned for those roles.
+
+Two things about how that project is built mattered as much as the shaders. Its `build.py` refuses a
+modified source on purpose, because it exists to prove the published DLL reproduces byte for byte
+from the pinned SDK DLL and the pinned compiler. That is what made it possible to trust any change
+made on top of it: a difference in a measurement could only be the change, never the toolchain. And
+its `manifest.json` names every shader by role, which is what made the hybrid possible at all,
+because a split between their shaders and ours needs a way to say which is which.
+
+The hybrid in this repository is a derivation of their work, not a replacement for it. If you have a
+BC-250, go and use theirs directly.
+
+**[OptiScaler](https://github.com/cdozdil/OptiScaler)** is what gets FSR4 into a game that never
+shipped with it, and the model selection hook it added is what lets an INT8 model be forced on a
+card AMD does not target.
+
+**Mesa and RADV.** The driver patch here is small. It sits on top of a compiler that already knew
+how to do almost all of this, and upstream merge request 41178 had already applied the same 24-bit
+idea to NIR's software dot product lowering before this project started.
