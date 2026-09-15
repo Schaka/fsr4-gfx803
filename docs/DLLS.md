@@ -14,7 +14,7 @@ AMD's own FSR4 4.1.1b DLL, unmodified. The Vulkan layer rewrites its packed dot 
 shader set replaces some of its network shaders.
 
 Use it if you want the least moving parts, or if the other two misbehave in your game. It is the
-only one that needs no build step, and it is the slowest of the three.
+only one that needs no extra download, and on every tier the three share it is the slowest.
 
 It runs under OptiScaler 0.9.4 with `Dx12Upscaler=fsr31`, `UpscalerIndex=0`, `Fsr4Update=true` and
 `Fsr4ForceEnableInt8=true`.
@@ -25,10 +25,10 @@ The `daniel-h-0/bc250-fsr4-fork` DLL at `v4.0.0-rc10`, rebuilt to run on GCN4. E
 shaders carries its weights as constants instead of reading them from a buffer, which is faster and
 changes no result.
 
-Use it if you want speed with no quality cost at all. Nothing here approximates: each shader does
-the same arithmetic AMD's does. One part is not bit for bit identical, and it is better rather than
-worse. The prepass computes in 32-bit floats where AMD's uses 16-bit, which keeps 24 bits of each
-product instead of 11. GCN4 runs both at the same rate, so the accuracy is free.
+Use it if you want speed at no cost in quality. Nothing here approximates. Every shader does the
+arithmetic AMD's does, and the one place the result differs it is more accurate, not less: the
+prepass computes in 32-bit floats where AMD's uses 16-bit, which keeps 24 bits of each product
+instead of 11. GCN4 runs both at the same rate, so that accuracy is free.
 
 It replaces its own shaders for every role but one. pass11 still reaches the driver as AMD wrote it,
 so a set replaces that one shader and nothing else. On this build that changes nothing worth
