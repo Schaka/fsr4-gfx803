@@ -10,7 +10,7 @@ static double prof_now(void)
 static void prof_init(struct device_data *dd)
 {
     struct prof_state *p = &dd->prof;
-    p->enabled = getenv("FSR4_PROFILE") != NULL;
+    p->enabled = flag_set("FSR4_PROFILE");
     if (!p->enabled)
         return;
 
@@ -118,7 +118,7 @@ static void prof_report(struct device_data *dd)
     fprintf(stderr, "fsr4_layer: upscaler %.1f ms/s over %.1f s, %.0f dispatches/s\n",
             ms / secs, secs, disp / secs);
 
-    if (getenv("FSR4_PROFILE_EACH"))
+    if (flag_set("FSR4_PROFILE_EACH"))
         prof_report_each(p);
 
     p->last_report = now;
@@ -160,7 +160,7 @@ static void prof_summary(struct device_data *dd)
     struct prof_state *p = &dd->prof;
     if (!p->enabled)
         return;
-    if (getenv("FSR4_PROFILE_EACH"))
+    if (flag_set("FSR4_PROFILE_EACH"))
         prof_report_each(p);
     double secs = prof_now() - p->started;
     if (!p->dispatches || secs <= 0)

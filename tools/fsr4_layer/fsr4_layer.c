@@ -124,6 +124,17 @@ static char g_dump[512];
 static int g_debug;
 static int g_autotune;
 static int g_profile;
+
+/* A switch is on when it is set to anything but 0, off, false or the empty string. Reading only
+ * whether the name exists makes FSR4_PROFILE=0 turn profiling on, which surprises everyone who
+ * writes it. */
+static int flag_set(const char *name)
+{
+    const char *v = getenv(name);
+    if (!v || !*v)
+        return 0;
+    return !(strcmp(v, "0") == 0 || strcmp(v, "off") == 0 || strcmp(v, "false") == 0);
+}
 static int g_expand_sdot;             /* set when the card has no packed dot product */
 static float g_timestamp_period = 1.0f;
 
@@ -169,9 +180,9 @@ static void init_config(void)
         snprintf(g_dump, sizeof(g_dump), "%s", d);
         mkdir(g_dump, 0755);
     }
-    g_debug = getenv("FSR4_LAYER_DEBUG") != NULL;
-    g_autotune = getenv("FSR4_AUTOTUNE") != NULL;
-    g_profile = getenv("FSR4_PROFILE") != NULL;
+    g_debug = flag_set("FSR4_LAYER_DEBUG");
+    g_autotune = flag_set("FSR4_AUTOTUNE");
+    g_profile = flag_set("FSR4_PROFILE");
 }
 
 /* FNV-1a over the module, the same shape of hash vkd3d uses for its own dumps. */
@@ -703,7 +714,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL fsr4_CreateDevice(
      * the four multiplies in 32 bits. Ask the device, rather than guessing from the model name. */
     PFN_vkGetPhysicalDeviceProperties2 gpdp2 =
             (PFN_vkGetPhysicalDeviceProperties2)gipa(g_instance, "vkGetPhysicalDeviceProperties2");
-    if (gpdp2 && !getenv("FSR4_NO_SDOT_EXPAND")) {
+    if (gpdp2 && !flag_set("FSR4_NO_SDOT_EXPAND")) {
         VkPhysicalDeviceShaderIntegerDotProductProperties dot = {
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_DOT_PRODUCT_PROPERTIES
         };
