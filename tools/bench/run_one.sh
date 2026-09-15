@@ -15,6 +15,7 @@ SWEEP_ENV=${SWEEP_ENV:-}
 # PROF=0 turns the GPU timestamps off, so a frametime carries no measurement cost.
 PROF=${PROF:-1}
 R=/data/tmp/fsr4re
+. /data/tmp/fsr4re/gpu_env.sh
 L=/home/user/.local/share/fsr4
 G="/home/user/Games/Heroic/Prefixes/Pragmata/drive_c/Program Files (x86)/Pragmata"
 FAIL () { echo "$TAG,frametime=,fps=,ms_per_s=,status=$1"; cleanup; exit 0; }
@@ -57,7 +58,7 @@ export WAYLAND_DISPLAY=$(cd /run/user/1000 && ls wayland-[0-9] 2>/dev/null | hea
 [ -n "${WAYLAND_DISPLAY:-}" ] || FAIL "no-wayland"
 export WINEPREFIX=/home/user/Games/Heroic/Prefixes/Pragmata
 export PROTONPATH=/home/user/.config/heroic/tools/proton/proton-cachyos-11.0-20260703-slr
-export GAMEID=0 MESA_VK_DEVICE_SELECT=1002:67df
+export GAMEID=0 MESA_VK_DEVICE_SELECT=$GPU_PCI
 export PROTON_FSR4_UPGRADE=0 PROTON_USE_OPTISCALER=0 PROTON_USE_XALIA=0
 export WINEDLLOVERRIDES="dxgi=n,b;amdxcffx64="
 export VK_DRIVER_FILES=$DRV

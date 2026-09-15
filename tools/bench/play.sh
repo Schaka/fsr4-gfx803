@@ -15,7 +15,10 @@
 set -u
 DLL=${1:-hybrid}
 TIER=${2:-balanced}
-L=/home/user/.local/share/fsr4
+# FSR4_LAYER_DIR lets a different build of the layer be tried, to tell a layer fault from a
+# game fault. /data/tmp/fsr4re/layer_old holds the build from before the last set of changes.
+L=${FSR4_LAYER_DIR:-/home/user/.local/share/fsr4}
+. /data/tmp/fsr4re/gpu_env.sh
 R=/data/tmp/fsr4re
 H=/home/user/Games/Heroic/Prefixes/Pragmata/drive_c
 G="$H/Program Files (x86)/Pragmata"
@@ -72,7 +75,7 @@ if [ "$OPTI" = 10 ]; then
 else
     cp "$FILE" "$G/amd_fidelityfx_upscaler_dx12.dll"
 fi
-echo "dll $DLL ($(md5sum "$FILE" | cut -c1-8)), tier $TIER, OptiScaler $OPTI" >&2
+echo "dll $DLL ($(md5sum "$FILE" | cut -c1-8)), tier $TIER, OptiScaler $OPTI, on $GPU_NAME" >&2
 
 rm -rf "$H/ovr"
 LOG=/data/tmp/play_${DLL}_${TIER}.log
@@ -80,7 +83,7 @@ cat > $R/run_play.sh <<EOS
 #!/bin/bash
 export WINEPREFIX=/home/user/Games/Heroic/Prefixes/Pragmata
 export PROTONPATH=/home/user/.config/heroic/tools/proton/proton-cachyos-11.0-20260703-slr
-export GAMEID=0 MESA_VK_DEVICE_SELECT=1002:67df
+export GAMEID=0 MESA_VK_DEVICE_SELECT=$GPU_PCI
 export PROTON_FSR4_UPGRADE=0 PROTON_USE_OPTISCALER=0 PROTON_USE_XALIA=0
 export WINEDLLOVERRIDES="$OVERRIDES"
 export VK_DRIVER_FILES=/data/radv_262/patched/radeon_icd.x86_64.json
@@ -92,11 +95,9 @@ swaymsg exit
 EOS
 chmod +x $R/run_play.sh
 
-# The RX 570 outputs are dead on this board, so sway renders on the AMD card and scans out on
-# whichever card actually has a monitor.
-AMD=$(for c in /sys/class/drm/card[0-9]; do v=$(cat $c/device/vendor 2>/dev/null); [ "$v" = 0x1002 ] && basename $c && break; done)
-OUT=$(for c in /sys/class/drm/card[0-9]; do for s in $c-*/status; do [ "$(cat $s 2>/dev/null)" = connected ] && basename $c && break 2; done; done)
-[ "$OUT" = "$AMD" ] && CARD=/dev/dri/$AMD || CARD=/dev/dri/$AMD:/dev/dri/$OUT
+# gpu_env.sh decided this: the AMD card alone when a monitor is on it, otherwise the AMD card plus
+# whichever card has one, so the compositor can copy across.
+CARD=$DRM_DEVICES
 printf "output * resolution 1920x1080\nxwayland enable\nexec %s/run_play.sh\nbindsym Mod1+Shift+e exit\n" "$R" > /data/tmp/swaycfg/play.cfg
 export XDG_RUNTIME_DIR=/run/user/1000 WLR_DRM_DEVICES=$CARD
 echo "sway on $CARD, log $LOG"
