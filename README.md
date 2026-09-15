@@ -244,9 +244,11 @@ its own built-in FSR 2.1.2 copy, and any frametime you measure is meaningless.
 
 Measured on an RX 470 in Pragmata, real gameplay, upscaler running on every frame, one identical
 scene, 1280x720 upscaled to 1920x1080, with the dot product rewrite in place and FSR4's own network
-shaders. They answer which FSR4 DLL to use, not which shader set.
+shaders. They answer which **version** of AMD's DLL to start from, and whether the driver patch
+earns its place. Which of the three rebuilt DLLs to run is a separate question, and `docs/DLLS.md`
+answers that one.
 
-| FSR4 DLL | driver | mean ms | fps |
+| FSR4 version | driver | mean ms | fps |
 |---|---|---:|---:|
 | 4.1.1 stock | Mesa 26.2.2 + this patch | 27.32 | 36.6 |
 | 4.1.1b INT8 | Mesa 26.2.2 + this patch | 27.78 | 36.0 |
@@ -272,8 +274,9 @@ The logs are in `evidence/fsr-4.0.2-vs-4.1.1/` and `evidence/mesa-26.2.2-vs-our-
 ## Upscaler times with the tuned shaders
 
 The numbers above are whole frames with the driver patch alone. The table below is the upscaler
-itself, measured with GPU timestamps around every network dispatch, on an RX 570 in Pragmata at
-1280x720 to 1920x1080 with FSR 4.1.1b. `FSR4_PROFILE=1` produces these numbers on your own card.
+itself on AMD's own DLL, measured with GPU timestamps around every network dispatch, on an RX 570 in
+Pragmata at 1280x720 to 1920x1080 with FSR 4.1.1b. `FSR4_PROFILE=1` produces these numbers on your
+own card. The two rebuilt DLLs are faster again, and `docs/DLLS.md` carries their table.
 
 | configuration | upscaler GPU ms | picture |
 |---|---:|---|
