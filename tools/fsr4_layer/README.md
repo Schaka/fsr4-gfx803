@@ -31,13 +31,19 @@ every variant on your card.
 
 **Steam.** Launch options of the game:
 
-    FSR4_SET=balanced /path/to/fsr4-run %command%
+    PROTON_FSR4_UPGRADE=0 FSR4_DLL=hybrid FSR4_SET=balanced /path/to/fsr4-run %command%
 
 **Heroic.** Settings, Advanced, Wrapper command:
 
     /path/to/fsr4-run
 
-Add `FSR4_SET=balanced` to the environment variables in the same panel.
+Add `FSR4_DLL`, `FSR4_SET=balanced` and `PROTON_FSR4_UPGRADE=0` to the environment variables in the
+same panel.
+
+`FSR4_DLL` says which upscaler DLL the game runs, because each one maps the four tier names to its
+own best shader set. `DLLS.md` describes the three, and `FSR4_SET=list` prints the tiers for the one
+you named. Without `PROTON_FSR4_UPGRADE=0`, Proton replaces the FSR4 DLL on every launch and undoes
+whichever one you installed.
 
 `FSR4_SET` takes one of four aliases, `lossless`, `quality`, `balanced` or `speed`. It also takes
 the name of any set in `sets/`. `off` loads the layer for the dot product rewrite and replaces no
