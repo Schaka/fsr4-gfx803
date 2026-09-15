@@ -57,9 +57,12 @@ one scene, two cycles of each row in one interleaved batch. `layer/DLLS.md` expl
 | `hybrid` | `balanced` | 11.31 | 88.4 | 9.14 |
 | `hybrid` | `speed` | 9.62 | 104.0 | 7.53 |
 
+The `balanced` row uses `fin25`. The tier ships `fin25_pack39`, which is `fin25` with a pass9 shader
+added, and that is a further 0.19 ms: 11.12 ms against 11.31 ms.
+
 Read the differences, not the absolutes: your scene, your card and your resolution move the whole
-table. The upscaler column needs GPU timestamps around every dispatch, which are not free, so these
-frametimes all carry the same measurement cost.
+table. Running the same ten rows with the GPU timestamps switched off moved no frametime by more
+than 0.05 ms, so the cost of measuring is not in these numbers.
 
 ## What the layer does
 

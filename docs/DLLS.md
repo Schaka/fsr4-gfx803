@@ -71,9 +71,12 @@ which agreed to 0.03 ms.
 | `hybrid` | `balanced` | `fin25` | 11.31 | 88.4 | 9.14 |
 | `hybrid` | `speed` | `prune16` | 9.62 | 104.0 | 7.53 |
 
-The upscaler column needs GPU timestamps around every dispatch, and those are not free, so the
-frametimes here carry the cost of measuring them. They are all inflated by the same amount, which is
-why the column is still worth reading.
+The upscaler column needs GPU timestamps around every dispatch. Running the same ten rows again with
+the timestamps switched off moved no frametime by more than 0.05 ms, so the cost of measuring is not
+in these numbers.
+
+The `balanced` row above uses `fin25`. The tier actually ships `fin25_pack39`, which is `fin25` with
+a pass9 shader added, and that is a further 0.19 ms: 11.12 ms against 11.31 ms.
 
 Read the differences, not the absolutes. Your scene, your card and your resolution all move the
 whole table.
