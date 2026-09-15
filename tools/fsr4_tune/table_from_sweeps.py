@@ -5,7 +5,11 @@ Each sweep cycles through its whole list before repeating, so a comparison insid
 even if the machine drifts between cycles. This averages the measured cycles and drops the warm-up,
 which the sweep already excludes, and any run that did not report `ok`.
 
-    table_from_sweeps.py <csv> [<csv> ...]
+The first measured cycle is dropped. A DLL that has just changed can still be compiling shaders
+during it, which once showed up as a 2 ms error on a configuration whose later cycles agreed to
+0.01 ms. Pass --keep-first to include it anyway.
+
+    table_from_sweeps.py [--keep-first] <csv> [<csv> ...]
 """
 import csv
 import sys
@@ -13,11 +17,14 @@ from collections import defaultdict
 
 
 def main():
+    keep_first = "--keep-first" in sys.argv
     rows = defaultdict(list)
-    for path in sys.argv[1:]:
+    for path in [a for a in sys.argv[1:] if not a.startswith("--")]:
         with open(path) as f:
             for r in csv.DictReader(f):
                 if r.get("status") != "ok" or not r.get("frametime_ms"):
+                    continue
+                if not keep_first and r.get("cycle") == "1":
                     continue
                 rows[(r["dll"], r["set"])].append(
                     (float(r["frametime_ms"]), float(r["fps"]), float(r["upscaler_ms"] or 0)))
