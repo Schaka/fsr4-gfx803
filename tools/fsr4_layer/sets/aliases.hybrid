@@ -1,6 +1,7 @@
 # Tier names for the hybrid build, which leaves ten model passes to AMD's shaders so the sets can
-# replace them. `off` is already exact here, because every shader the fork does replace is exact.
+# replace them. `off` is already exact here, because every shader the fork does replace does the
+# same arithmetic AMD's does.
 lossless=off
 quality=fin15
-balanced=fin25
+balanced=fin25_pack39
 speed=prune16
