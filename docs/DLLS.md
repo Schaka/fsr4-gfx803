@@ -31,9 +31,10 @@ worse. The prepass computes in 32-bit floats where AMD's uses 16-bit, which keep
 product instead of 11. GCN4 runs both at the same rate, so the accuracy is free.
 
 It replaces its own shaders for every role but one. pass11 still reaches the driver as AMD wrote it,
-so a set replaces that one shader and nothing else. That is worth 2 ms of frametime here, which is
-why `quality`, `balanced` and `speed` are worth naming even though each changes a single shader.
-`lossless` stays exact, because the `exact` set has no pass11 shader to offer.
+so a set replaces that one shader and nothing else. On this build that changes nothing worth
+measuring: 15.01 ms of frametime against 15.00 ms. The three tiers are wired up so the names work,
+and they give you a different pass11 shader, but do not expect them to do much here. `lossless`
+leaves even that one alone, because the `exact` set has no pass11 shader to offer.
 
 It runs under OptiScaler 10.0.0-pre1 or newer with `Dx12Upscaler=ffx`, `UpscalerIndex=0` and
 `Fsr4ForceModel=2`.
