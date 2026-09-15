@@ -41,7 +41,25 @@ whichever one you installed.
 
 ## What each costs
 
-MEASUREMENT_TABLE
+Frametime and upscaler GPU time on an RX 570 in Pragmata, 1280x720 upscaled to 1920x1080, FSR 4.1.1b,
+one scene, two cycles of each row in one interleaved batch. `layer/DLLS.md` explains the three DLLs.
+
+| DLL | tier | frametime ms | fps | upscaler ms |
+|---|---|---:|---:|---:|
+| `stock` | none | 17.41 | 57.5 | 15.23 |
+| `stock` | `lossless` | 17.01 | 58.8 | 14.86 |
+| `stock` | `quality` | 14.78 | 67.7 | 12.73 |
+| `stock` | `balanced` | 13.07 | 76.5 | 11.09 |
+| `stock` | `speed` | 10.89 | 91.8 | 8.99 |
+| `bc250` | `lossless` | 15.04 | 66.5 | 12.84 |
+| `hybrid` | `lossless` | 14.84 | 67.4 | 12.56 |
+| `hybrid` | `quality` | 12.88 | 77.7 | 10.83 |
+| `hybrid` | `balanced` | 11.31 | 88.4 | 9.14 |
+| `hybrid` | `speed` | 9.62 | 104.0 | 7.53 |
+
+Read the differences, not the absolutes: your scene, your card and your resolution move the whole
+table. The upscaler column needs GPU timestamps around every dispatch, which are not free, so these
+frametimes all carry the same measurement cost.
 
 ## What the layer does
 

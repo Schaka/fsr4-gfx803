@@ -51,6 +51,33 @@ its `lossless` tier costs nothing in quality for the same reason `bc250` does no
 
 It runs under the same OptiScaler 10 configuration as `bc250`.
 
+## What each costs
+
+Frametime on an RX 570 in Pragmata, 1280x720 upscaled to 1920x1080, FSR 4.1.1b, on one scene. Every
+row comes from the same batch, measured one after another and then again, so the differences between
+rows are trustworthy even though the absolute numbers belong to that scene. Two cycles of each row,
+which agreed to 0.03 ms.
+
+| DLL | tier | shader set | frametime ms | fps | upscaler ms |
+|---|---|---|---:|---:|---:|
+| `stock` | none | `off` | 17.41 | 57.5 | 15.23 |
+| `stock` | `lossless` | `exact` | 17.01 | 58.8 | 14.86 |
+| `stock` | `quality` | `fin15` | 14.78 | 67.7 | 12.73 |
+| `stock` | `balanced` | `fin25` | 13.07 | 76.5 | 11.09 |
+| `stock` | `speed` | `prune16` | 10.89 | 91.8 | 8.99 |
+| `bc250` | `lossless` | `off` | 15.04 | 66.5 | 12.84 |
+| `hybrid` | `lossless` | `off` | 14.84 | 67.4 | 12.56 |
+| `hybrid` | `quality` | `fin15` | 12.88 | 77.7 | 10.83 |
+| `hybrid` | `balanced` | `fin25` | 11.31 | 88.4 | 9.14 |
+| `hybrid` | `speed` | `prune16` | 9.62 | 104.0 | 7.53 |
+
+The upscaler column needs GPU timestamps around every dispatch, and those are not free, so the
+frametimes here carry the cost of measuring them. They are all inflated by the same amount, which is
+why the column is still worth reading.
+
+Read the differences, not the absolutes. Your scene, your card and your resolution all move the
+whole table.
+
 ## Getting the DLLs
 
 `bc250` and `hybrid` ship as a separate download, because they are large and most of the archive is
