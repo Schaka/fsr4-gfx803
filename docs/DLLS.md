@@ -30,8 +30,10 @@ the same arithmetic AMD's does. One part is not bit for bit identical, and it is
 worse. The prepass computes in 32-bit floats where AMD's uses 16-bit, which keeps 24 bits of each
 product instead of 11. GCN4 runs both at the same rate, so the accuracy is free.
 
-Because it replaces every shader, the tuned sets have nothing left to match, so all four tiers mean
-the same thing on this DLL.
+It replaces its own shaders for every role but one. pass11 still reaches the driver as AMD wrote it,
+so a set replaces that one shader and nothing else. That is worth 2 ms of frametime here, which is
+why `quality`, `balanced` and `speed` are worth naming even though each changes a single shader.
+`lossless` stays exact, because the `exact` set has no pass11 shader to offer.
 
 It runs under OptiScaler 10.0.0-pre1 or newer with `Dx12Upscaler=ffx`, `UpscalerIndex=0` and
 `Fsr4ForceModel=2`.
@@ -63,8 +65,8 @@ silently undoes your choice.
 ## Checking which one is running
 
 `FSR4_DEBUG=1` makes the layer print one line per shader. Count the lines saying `replaced`: the
-hybrid with a tier replaces about ten, the stock DLL with a tier replaces about eleven, and `bc250`
-replaces none whatever tier you name.
+stock DLL with a tier replaces about eleven, the hybrid about ten, and `bc250` exactly one on any
+tier but `lossless`, which replaces none.
 
 `FSR4_PROFILE=1` reports the GPU time the network costs and the dispatch rate. FSR4 runs a few dozen
 network dispatches per frame. A build that runs a handful is not upscaling, whatever its frame rate

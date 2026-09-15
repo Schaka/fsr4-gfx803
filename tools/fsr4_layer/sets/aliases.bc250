@@ -1,6 +1,11 @@
-# Tier names for the BC-250 fork's DLL rebuilt for GCN4. It replaces all 348 shaders itself, so a
-# set has nothing left to match and every tier is the exact one.
+# Tier names for the BC-250 fork's DLL rebuilt for GCN4.
+#
+# It replaces its own shaders for every role but one: pass11 still reaches the driver as AMD wrote
+# it, so a set replaces that one shader and nothing else. That one shader is worth 2 ms of
+# frametime, so the tiers are worth naming even though each changes a single shader.
+#
+# `lossless` stays `off` because the `exact` set has no pass11 shader to offer.
 lossless=off
-quality=off
-balanced=off
-speed=off
+quality=fin15
+balanced=fin25
+speed=prune16
