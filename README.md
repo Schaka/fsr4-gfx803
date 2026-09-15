@@ -351,8 +351,12 @@ RADV, in August 2026. The overlay frametime is from the title screen, not a benc
 | `sdk_sample/`, `testkit/` | AMD's FSR sample executable, and the deployment used to benchmark it |
 | `proxies/` | the frame-generation passthrough proxy the SDK sample uses |
 | `evidence/` | logs backing the results above |
-| `tools/` | the benchmark scripts |
-| `docs/` | the one photo in this README |
+| `tools/fsr4_layer/` | the Vulkan layer, its launcher, and every shader set |
+| `tools/fsr4_tune/` | the tuner that builds and scores the sets |
+| `tools/bc250/` | the scripts that rebuild the BC-250 fork's DLL for GCN4 |
+| `tools/` | the benchmark and release scripts |
+| `docs/DLLS.md` | the three upscaler DLLs and when to use each |
+| `docs/SETS.md` | every shader set, what it measured, and how it looked |
 | `REPRODUCE.md` | how to reproduce the measurement exactly |
 | `notes/` | how the game benchmark runs headless |
 | `data/` | captured SPIR-V, ISA, weights, activations, roofline analysis |
