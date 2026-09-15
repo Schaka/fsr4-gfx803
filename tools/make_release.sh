@@ -48,6 +48,12 @@ sed -i 's#\.\./\.\./docs/SETS\.md#SETS.md#g; s#\.\./fsr4_tune/#the repository, t
 # The second path: the tools that turn the BC-250 fork's DLL into one that runs on GCN4. The DLL
 # itself is not shipped. It is built from that fork plus the pinned SDK DLL, and its licence forbids
 # disassembly, which is how its shader edits are produced. Users build it themselves.
+# One-shot ports for other cards: the recipe and the wrapper, not the maintained path.
+if [ -d "$REPO/other_archs" ]; then
+    mkdir -p "$DIR/other_archs"
+    cp -r "$REPO/other_archs/." "$DIR/other_archs/"
+fi
+
 mkdir -p "$DIR/bc250"
 cp "$REPO/tools/bc250/wave64_fix.py" "$REPO/tools/bc250/fp32_prepass.py" \
    "$REPO/tools/bc250/int24_postpass.py" "$REPO/tools/bc250/build_variant.py" \
@@ -80,6 +86,11 @@ if [ -n "${FSR4_DLLS:-}" ] && [ -d "$FSR4_DLLS" ]; then
     # AMD's own DLL goes in too, so one download covers all three paths.
     cp "$REPO/fsr4_dlls/4.1.1b-int8/amd_fidelityfx_upscaler_dx12.dll" \
        "$DDIR/amd_fidelityfx_upscaler_dx12.stock.dll"
+    # One-shot builds for other cards, shipped as they stood. See other_archs/.
+    for extra in "$FSR4_DLLS"/amd_fidelityfx_upscaler_dx12.*.dll; do
+        case "$extra" in *.bc250.dll|*.hybrid.dll|*.stock.dll) continue ;; esac
+        [ -f "$extra" ] && cp "$extra" "$DDIR/"
+    done
     cp "$REPO/docs/DLLS.md" "$DDIR/README.md"
     ( cd "$DDIR" && find . -type f ! -name MD5SUMS -printf '%P\n' | sort | xargs md5sum > MD5SUMS )
     ( cd "$OUT" && tar czf "$NAME-dlls.tar.gz" "$NAME-dlls" )

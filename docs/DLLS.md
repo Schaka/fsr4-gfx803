@@ -98,6 +98,13 @@ new version, which has to be measured again rather than carried over.
 Set `PROTON_FSR4_UPGRADE=0` whichever you use, or Proton replaces the DLL on every launch and
 silently undoes your choice.
 
+## Builds for other cards
+
+`amd_fidelityfx_upscaler_dx12.vega.dll` and any other DLL here named after a card is a one-shot port:
+measured once on that card, built once, and shipped as it stood. None of them is maintained, and
+none applies to a GCN4 card. `other_archs/` in the main archive says what each one is, what it
+costs and how it was built.
+
 ## Checking which one is running
 
 `FSR4_DEBUG=1` makes the layer print one line per shader. Count the lines saying `replaced`: the

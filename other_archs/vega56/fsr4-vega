@@ -1,0 +1,76 @@
+#!/bin/bash
+# Run a game with the Vega 56 FSR4 build.
+#
+# Steam:   put this in the launch options
+#              /path/to/fsr4-vega %command%
+# Heroic:  Settings, Advanced, Wrapper command
+# Anything else: put it in front of the command.
+#
+# This is a separate wrapper from the GCN4 one on purpose. That path offers three upscaler DLLs and
+# four tiers on each, because the choice is worth making there. This card has one build and one
+# tier, and the tier is exact, so there is nothing to pick and a wrapper that asked would only be
+# misleading.
+#
+# Environment:
+#   FSR4_SET    a shader set, if you want to try one. Default: off.
+#               `off` keeps the layer loaded and replaces no shader, which is what the measured
+#               build does. A set was measured here and is not the default: `fin15` reaches one of
+#               the two roles this build hands to AMD, buys 0.1 ms, and may cost picture.
+#               `none` takes the layer out of the process.
+#   FSR4_SETS   directory holding the sets. Default: the GCN4 path's sets next to this repository.
+#   FSR4_LAYER  directory holding libfsr4_layer.so. Default: ../../tools/fsr4_layer
+#   FSR4_DEBUG  1 prints one line per shader the layer sees.
+#
+# The layer is kept in front of the game even though its dot product rewrite is worth nothing on
+# this card's shaders: it is what loads a set if you name one, and it asks the device before
+# rewriting anything, so it costs nothing to leave in.
+set -u
+HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+LAYER=${FSR4_LAYER:-$HERE/../../tools/fsr4_layer}
+SETS=${FSR4_SETS:-$LAYER/sets}
+SET=${FSR4_SET:-off}
+
+if [ "$SET" = list ]; then
+    echo "This build has one tier and it is exact, so FSR4_SET is only for experiments." >&2
+    echo "sets in $SETS:" >&2
+    ls "$SETS" 2>/dev/null | grep -vE '^(keys\.txt|aliases\..*)$' | tr '\n' ' ' >&2
+    echo >&2
+    exit 0
+fi
+
+if [ "$SET" = none ] || [ $# -eq 0 ]; then
+    exec "$@"
+fi
+
+if [ "$SET" != off ] && [ ! -d "$SETS/$SET" ]; then
+    echo "fsr4-vega: no set '$SET' in $SETS, carrying on without one" >&2
+    SET=off
+fi
+
+if [ ! -f "$LAYER/libfsr4_layer.so" ]; then
+    echo "fsr4-vega: $LAYER/libfsr4_layer.so is missing. Build it with:" >&2
+    echo "  gcc -O2 -fPIC -shared -o $LAYER/libfsr4_layer.so $LAYER/fsr4_layer.c -lpthread" >&2
+    exec "$@"
+fi
+
+# The loader resolves library_path against the json, and some loaders only accept an absolute path.
+MANIFEST=$(mktemp -d)
+sed "s|\"library_path\":.*|\"library_path\": \"$LAYER/libfsr4_layer.so\",|" \
+    "$LAYER/fsr4_layer.json" > "$MANIFEST/fsr4_layer.json"
+
+export VK_LAYER_PATH="$MANIFEST"
+export VK_INSTANCE_LAYERS=VK_LAYER_FSR4_tune
+export FSR4_SET="$SET"
+export FSR4_SETS="$SETS"
+[ "${FSR4_DEBUG:-0}" = 1 ] && export FSR4_LAYER_DEBUG=1
+
+# vkd3d-proton serves pipelines from its own cache without handing SPIR-V to the driver, and the
+# layer can only act on what it sees.
+if [ -n "${VKD3D_CONFIG:-}" ]; then
+    export VKD3D_CONFIG="$VKD3D_CONFIG,pipeline_library_ignore_spirv"
+else
+    export VKD3D_CONFIG=pipeline_library_ignore_spirv
+fi
+
+echo "fsr4-vega: Vega 56 build, set '$SET'" >&2
+exec "$@"
