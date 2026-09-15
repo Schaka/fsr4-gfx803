@@ -69,9 +69,10 @@ Each of these was measured, not reasoned about.
 every activation is a sign extended byte, and across the 96 postpass shaders all 356,842 weights are
 whole numbers no larger than 128. In integers each multiply-accumulate can become one
 `v_mad_i32_i24`. It is slower: 1.1 ms of frametime on the hybrid, on the lossless and the balanced
-tier alike, and 1.65 ms on the build that keeps every one of the fork's shaders. The float form already costs one instruction, because `v_mac_f32` is VOP2 and takes its
-weight as a 32-bit literal. `v_mad_i32_i24` is VOP3, where GCN4 allows no literal, and only 76
-percent of the weights fall in the inline constant range of -16 to 64. Loading the rest costs more
+tier alike, and 1.65 ms on the build that keeps every one of the fork's shaders. The float form
+already costs one instruction, because `v_mac_f32` is VOP2 and takes its weight as a 32-bit
+literal. `v_mad_i32_i24` is VOP3, where GCN4 allows no literal, and only 76 percent of the weights
+fall in the inline constant range of -16 to 64. Loading the rest costs more
 than the byte extracts the change saves. `tools/bc250/int24_postpass.py` keeps the method.
 
 **Rewriting the packed 16-bit arithmetic.** GCN4 has `v_mad_legacy_u16`. The fork's code already
