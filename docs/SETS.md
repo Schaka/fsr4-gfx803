@@ -102,6 +102,12 @@ variants, and they do not predict what you will see, so try a few in a game you 
 FSR4's own code at one vector instruction per multiply, because it extracts weight bytes on the
 scalar unit. There is less to win there, and a set built for one card can be slower on another.
 
+**The three `_pack39` sets carry one shader nobody has looked at yet.** `fin15_pack39`,
+`fin25_pack39` and `prune16_pack39` are those sets with `pack3`'s pass9 shader added, because none
+of them had a pass9 shader at all. The speed is measured. The picture is not: `pack3` on its own is
+noisy around hair, and this borrows one shader from it at the smallest tensor in the network. Look
+at `balanced` against `fin25` before you trust it, and name `fin25` directly if you prefer.
+
 **A coarser set can be the faster one, and not only because it does less work.** These shaders are
 large. The pass9 shader is over half a megabyte of SPIR-V, and the passes around it are larger
 still. Between the packing variants of that one shader, the 3-bit version is 0.21 ms of frametime
