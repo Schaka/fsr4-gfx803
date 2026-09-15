@@ -52,7 +52,13 @@ mkdir -p "$DIR/bc250"
 cp "$REPO/tools/bc250/wave64_fix.py" "$REPO/tools/bc250/fp32_prepass.py" \
    "$REPO/tools/bc250/int24_postpass.py" "$REPO/tools/bc250/build_variant.py" \
    "$REPO/tools/bc250/prune_weights.py" \
-   "$REPO/tools/bc250/README.md" "$REPO/tools/bc250/hybrid.md" "$DIR/bc250/"
+   "$REPO/tools/bc250/README.md" "$REPO/tools/bc250/hybrid.md" \
+   "$REPO/tools/bc250/REDOING_THE_HYBRID.md" "$DIR/bc250/"
+
+# The measurement harness, so the procedure in bc250/REDOING_THE_HYBRID.md can actually be run.
+mkdir -p "$DIR/bench"
+cp "$REPO/tools/bench/run_one.sh" "$REPO/tools/bench/sweep.sh" "$REPO/tools/bench/play.sh" \
+   "$REPO/tools/fsr4_tune/table_from_sweeps.py" "$DIR/bench/"
 
 cp "$REPO/tools/release_install.sh" "$DIR/install.sh"
 cp "$REPO/tools/release_readme.md" "$DIR/README.md"

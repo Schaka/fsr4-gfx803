@@ -307,8 +307,9 @@ measured one after another and then again in a single batch, so the rows compare
 | `hybrid` | `balanced` | 11.31 | 88.4 | 9.14 |
 | `hybrid` | `speed` | 9.62 | 104.0 | 7.53 |
 
-The `balanced` rows use `fin25`. Both DLLs now ship `fin25_pack39` for that tier, which is `fin25`
-with a pass9 shader added, and that is a further 0.17 to 0.19 ms. Running the whole table again with
+The `balanced` rows use `fin25`. Both DLLs ship `fin25_pack39` for that tier, which is `fin25` with
+a pass9 shader added, and that is a further 0.17 to 0.19 ms. Side by side, plain `fin25` is slightly
+the cleaner of the two, so name it directly if you would rather have the picture than the 0.19 ms. Running the whole table again with
 the GPU timestamps off moved no frametime by more than 0.05 ms, so the cost of measuring is not in
 these numbers. `docs/DLLS.md` describes the three DLLs and `FSR4_PROFILE=1` reproduces the upscaler
 column on your own card.
