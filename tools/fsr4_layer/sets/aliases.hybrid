@@ -1,7 +1,10 @@
 # Tier names for the hybrid build, which leaves ten model passes to AMD's shaders so the sets can
-# replace them. `off` is already exact here, because every shader the fork does replace does the
-# same arithmetic AMD's does.
-lossless=off
-quality=fin15
+# replace them.
+#
+# `lossless` is `exact` rather than `off`: baking the weights into a shader changes no result, and
+# it is worth 0.07 ms here. The `speed` tier keeps plain `prune16`, because adding the pass9 shader
+# that helps the other two tiers costs 0.26 ms on this one.
+lossless=exact
+quality=fin15_pack39
 balanced=fin25_pack39
 speed=prune16

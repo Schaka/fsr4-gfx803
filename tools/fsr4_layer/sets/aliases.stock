@@ -1,5 +1,8 @@
 # Tier names for AMD's own FSR4 DLL. Each line is <tier>=<set directory in this folder>.
+#
+# `balanced` carries the pass9 shader the plain set has none of, which is worth 0.17 ms here.
+# `quality` does not, because on this DLL it measured the same either way.
 lossless=exact
 quality=fin15
-balanced=fin25
+balanced=fin25_pack39
 speed=prune16
