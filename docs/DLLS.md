@@ -4,7 +4,11 @@ FSR4's upscaler is one DLL. This project gives you three of them, and the same f
 on each. They differ in whose shaders run inside, so the same tier name maps to a different shader
 set on each one. `FSR4_DLL` tells the launcher which one you installed.
 
+    VK_DRIVER_FILES=$HOME/.local/share/radv-fsr4/radeon_icd.x86_64.json \
     FSR4_DLL=hybrid FSR4_SET=balanced fsr4-run %command%
+
+`install.sh` in the release archive writes that `radeon_icd.x86_64.json`, so run it first. It does
+not exist before that.
 
 Pick the DLL first, then the tier. `FSR4_SET=list` prints the tiers for whichever DLL you named.
 

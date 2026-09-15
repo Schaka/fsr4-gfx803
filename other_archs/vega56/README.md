@@ -5,12 +5,20 @@ Measured once, on 15 September 2026, against FSR 4.1.1b in Pragmata at 1280x720 
 
 ## What to run
 
-Take `amd_fidelityfx_upscaler_dx12.vega.dll` from the release's DLL archive, rename it to
+First run `./install.sh` from the main archive, the same as for the GCN4 path. It puts the patched
+RADV under `~/.local/share/radv-fsr4` and writes the
+`~/.local/share/radv-fsr4/radeon_icd.x86_64.json` that the command below points at. That file does
+not exist until you do this, and the patched driver matters here: see the table at the end.
+
+Then take `amd_fidelityfx_upscaler_dx12.vega.dll` from the release's DLL archive, rename it to
 `amd_fidelityfx_upscaler_dx12.dll`, and put it in the `OptiScaler/` folder of the game directory.
-Then put `fsr4-vega` in front of the game, the same way `fsr4-run` works on the GCN4 path:
+Finally put `fsr4-vega` in front of the game, the same way `fsr4-run` works on the GCN4 path:
 
     VK_DRIVER_FILES=$HOME/.local/share/radv-fsr4/radeon_icd.x86_64.json \
     PROTON_FSR4_UPGRADE=0 /path/to/fsr4-vega %command%
+
+`install.sh` takes a directory if you want it somewhere else, and then `VK_DRIVER_FILES` points
+there instead.
 
 It needs OptiScaler 10.0.0-pre1 or newer, with `Dx12Upscaler=ffx`, `UpscalerIndex=0` and
 `Fsr4ForceModel=2`.
