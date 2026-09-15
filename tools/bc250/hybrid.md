@@ -1,36 +1,23 @@
-# The hybrid: BC-250 where it wins, our tuned shaders everywhere else
+# The hybrid: the fork where it wins, our tuned shaders everywhere else
 
 The BC-250 build and the shader sets in this repository optimise different parts of FSR4, and they
-can be combined. The result is faster than either on its own.
+combine. The result is faster than either alone.
 
 ## Why they combine
 
-The BC-250 build replaces 348 shaders. Where it replaces one, our sets no longer match it. A set is
-keyed to the SPIR-V the stock DLL compiles. `SKIP_ENTRIES` decides which roles the build leaves
+The fork replaces all 348 shaders. Where it replaces one, our sets no longer match it, because a set
+is keyed to the SPIR-V the stock DLL compiles. `SKIP_ENTRIES` decides which roles the build leaves
 alone. The SDK's own shader then stands there, which is what our sets are tuned for.
 
-The split that works keeps BC-250 for the prepass, the postpass, pass6 and pass7, where it clearly
-wins. It leaves the SDK's own shaders for the rest, so our sets can replace them.
+The split that wins keeps the fork's prepass, postpass, pass6 and pass7, and leaves the ten other
+model passes to AMD's shaders:
 
     SKIP_ENTRIES=pass1,pass2,pass3,pass4,pass5,pass8,pass9,pass10,pass11,pass12
 
-Nine of our tuned shaders then take effect, against one on the unmodified BC-250 build.
-
-## What it measures
-
-Upscaler GPU time and frametime on an RX 570 in Pragmata, 1280x720 to 1920x1080. Each row is the
-mean of two scored runs after a discarded warm-up. The first run after a change compiles shaders and
-is not representative.
-
-| build | set | upscaler ms | frametime ms | fps |
-|---|---|---:|---:|---:|
-| FSR4 4.1.1b | none | 15.18 | 21.08 | 47.4 |
-| BC-250, all its own shaders | none | 12.4 | 18.3 | 54.6 |
-| hybrid | `balanced` | 9.7 | 15.5 | 64.5 |
-| hybrid | `speed` | 8.2 | 13.9 | 72.0 |
-
-The hybrid with `balanced` is 2.6 ms of upscaler time and 2.8 ms of frametime better than the BC-250
-build alone. It beats every earlier result on either path.
+The postpass is why this is worth doing at all. Giving that one role back to AMD costs 1.5 ms of
+frametime, on the lossless and the balanced tier alike. The prepass is worth 0.05 ms, which is at
+the edge of what these runs resolve. Handing pass6 and pass7 to our sets as well is slower, and so
+is letting the fork keep pass9: 11.42 ms against 11.32 ms.
 
 ## Building it
 
@@ -39,4 +26,23 @@ build alone. It beats every earlier result on either path.
     cd work && SKIP_ENTRIES=pass1,pass2,pass3,pass4,pass5,pass8,pass9,pass10,pass11,pass12 \
         python3 build_variant.py --sdk <pinned SDK dll> --dxcompiler <libdxcompiler.so> --output <dir>
 
-Then run the game with the layer and a set, for example `FSR4_SET=balanced`.
+Then run the game with `FSR4_DLL=hybrid` and a tier, for example `FSR4_SET=balanced`.
+
+## The hole the tiers had
+
+pass9 is the most expensive shader in the whole pipeline, and the `fin25` set has no shader for it,
+so it ran as AMD wrote it while every other role was replaced. The `pack3` set does have one, and
+grafting it on is worth 0.14 ms of frametime. The shipped `fin25_pack39` set is `fin25` with that one
+shader added.
+
+Which pass9 shader matters more than it should. The 3-bit packing beats the 4-bit by 0.14 ms and the
+5-bit by 0.65 ms, in that order and with no exception, even though coarser packing is the less
+accurate one. Fewer bits in a weight means more of them fit the inline constant range the vector
+instructions encode directly, so the code is both shorter and smaller, and this shader is over half a
+megabyte of SPIR-V.
+
+## The pure build is not set-proof either
+
+The fork's DLL serves AMD's own pass11 at runtime, whichever way it is built, so a set replaces that
+one shader even there. It is worth 0.21 ms. That is why `aliases.bc250` names a real set rather than
+`off`.
