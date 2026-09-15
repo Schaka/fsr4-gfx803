@@ -13,9 +13,7 @@ Three pieces do the work.
    32-bit multiplies the driver patch matches, on any card that has no hardware instruction for
    them. It also swaps FSR4's network shaders for tuned ones, in which the weights are constants and
    two output channels share one multiply through a quantized, packed operand. A shader the driver
-   rejects falls back to the game's own. On a Vega 56 the upscaler pass goes from 7.5 ms to 3 ms, and
-   on an RX 570 from about 14.5 ms to 9.5 ms.
-
+   rejects falls back to the game's own.
 3. **A choice of upscaler DLL.** `stock` is AMD's own. `bc250` is the `daniel-h-0/bc250-fsr4-fork`
    rebuild at `v4.0.0-rc10`, made to run on GCN4, whose shaders carry their weights as constants.
    `hybrid` is that rebuild with ten model passes handed back to AMD's shaders, so the tuned sets
@@ -23,9 +21,15 @@ Three pieces do the work.
    installed, because the four tier names below map to a different shader set on each.
    `docs/DLLS.md` describes all three.
 
+Together, on an RX 570 in Pragmata at 1280x720 upscaled to 1920x1080, the upscaler goes from 15.2 ms
+to 9.1 ms at the `balanced` tier and 7.5 ms at `speed`, and the frame goes from 17.4 ms to 11.1 ms
+and 9.6 ms. Keeping the result exact costs 12.6 ms of upscaler time, which is the floor: the hot
+shaders already run at 0.95 to 0.98 instructions per multiply, so going lower means doing less
+arithmetic rather than doing it better. A Vega 56 gains far more, from 7.5 ms to about 3 ms.
+
 Nothing else is patched. Your normal Proton and vkd3d-proton are used as they are.
 
-Neither piece is installed system-wide. The driver is a second copy of RADV that one game opts into
+Nothing is installed system-wide. The driver is a second copy of RADV that one game opts into
 through an environment variable, and the layer is enabled per game in the same way.
 
 ---
@@ -60,21 +64,27 @@ cd tools/fsr4_layer
 gcc -O2 -fPIC -shared -o libfsr4_layer.so fsr4_layer.c -lpthread
 ```
 
-### The sets
+### The tiers
 
-`FSR4_SET` picks how far the shaders are rewritten. Four names cover the common cases, and each DLL
-maps them to its own best set, so read this table together with `FSR4_DLL` in `docs/DLLS.md`.
+`FSR4_SET` picks how far the shaders are rewritten. Four names cover the common cases. Each DLL maps
+them to its own best set, because the fastest set is not the same on all three, so `FSR4_DLL` decides
+what a tier means. The tables are `aliases.stock`, `aliases.bc250` and `aliases.hybrid` next to the
+sets, and `FSR4_SET=list` prints the one for the DLL you named.
 
 | name | what it does | how it looks |
 |---|---|---|
-| `lossless` | the same maths, with the weights baked in. Faster only where that wins | bit-identical to stock |
+| `lossless` | the same maths, with the weights baked in | bit-identical to stock |
 | `quality` | per-pass mix, every pass held under 15 percent error | hard to tell from stock |
 | `balanced` | per-pass mix, under 25 percent | very close to stock |
 | `speed` | drops every weight of magnitude 16 or less | visibly softer, fastest |
 | `off` | replace no shader, but still rewrite the dot products | stock FSR4, faster on GCN4 |
 | `none` | do not load the layer at all | stock FSR4 |
 
-Nineteen sets ship in total, one per variant we measured, and any of them can be named directly.
+On the `stock` and `hybrid` DLLs, `balanced` and `quality` also carry a pass9 shader that the plain
+sets have none of. It is worth 0.11 to 0.19 ms, its speed is measured and its picture is not, so
+look at it before you trust it. `docs/SETS.md` says why.
+
+Twenty-two sets ship in total, one per variant we measured, and any of them can be named directly.
 `FSR4_SET=list` prints them, and `docs/SETS.md` says what each one is, what it measured on two cards,
 and how it looked.
 
@@ -238,6 +248,12 @@ Turn on `Fsr4EnableWatermark=true` in `OptiScaler.ini` to see the FSR4 version o
 If you see `FSR2FeatureDx12_212`, FSR4 is not running at all. OptiScaler has quietly fallen back to
 its own built-in FSR 2.1.2 copy, and any frametime you measure is meaningless.
 
+`FSR4_DEBUG=1` makes the layer print one line per shader. Count the lines saying `replaced`: the
+stock DLL with a tier replaces about eleven, the hybrid about ten, and `bc250` exactly one on any
+tier but `lossless`. `FSR4_PROFILE=1` reports the GPU time the network costs and the dispatch rate.
+FSR4 runs a few dozen network dispatches per frame, so a build that runs a handful is not upscaling,
+whatever its frame rate says.
+
 ---
 
 ## Results
@@ -271,25 +287,35 @@ The logs are in `evidence/fsr-4.0.2-vs-4.1.1/` and `evidence/mesa-26.2.2-vs-our-
 
 ---
 
-## Upscaler times with the tuned shaders
+## What each DLL and tier costs
 
-The numbers above are whole frames with the driver patch alone. The table below is the upscaler
-itself on AMD's own DLL, measured with GPU timestamps around every network dispatch, on an RX 570 in
-Pragmata at 1280x720 to 1920x1080 with FSR 4.1.1b. `FSR4_PROFILE=1` produces these numbers on your
-own card. The two rebuilt DLLs are faster again, and `docs/DLLS.md` carries their table.
+The numbers above are whole frames with the driver patch alone, and they answer which version of
+AMD's DLL to start from. This table answers the other question: which of the three DLLs to run, and
+at which tier. RX 570, Pragmata, 1280x720 to 1920x1080, FSR 4.1.1b, one scene, ten configurations
+measured one after another and then again in a single batch, so the rows compare.
 
-| configuration | upscaler GPU ms | picture |
-|---|---:|---|
-| layer neutral, the control | 18.93 | FSR4 as it arrives |
-| `off`, dot products rewritten | 14.86 | unchanged, the rewrite is exact |
-| `lossless` | 14.60 | bit-identical |
-| `quality` | 12.57 | hard to tell from stock |
-| `balanced` | 11.32 | very close to stock |
-| `speed` | 8.98 | visibly softer |
+| DLL | tier | frametime ms | fps | upscaler ms |
+|---|---|---:|---:|---:|
+| `stock` | none | 17.41 | 57.5 | 15.23 |
+| `stock` | `lossless` | 17.01 | 58.8 | 14.86 |
+| `stock` | `quality` | 14.78 | 67.7 | 12.73 |
+| `stock` | `balanced` | 13.07 | 76.5 | 11.09 |
+| `stock` | `speed` | 10.89 | 91.8 | 8.99 |
+| `bc250` | `lossless` | 15.04 | 66.5 | 12.84 |
+| `hybrid` | `lossless` | 14.84 | 67.4 | 12.56 |
+| `hybrid` | `quality` | 12.88 | 77.7 | 10.83 |
+| `hybrid` | `balanced` | 11.31 | 88.4 | 9.14 |
+| `hybrid` | `speed` | 9.62 | 104.0 | 7.53 |
 
-The control is the layer loaded with `FSR4_SET=off FSR4_NO_SDOT_EXPAND=1`, so it sets the same
-vkd3d-proton options and changes nothing else. The dot product rewrite alone takes 4 ms off the
-upscaler without touching the picture, and `speed` takes off 53 percent.
+The `balanced` rows use `fin25`. Both DLLs now ship `fin25_pack39` for that tier, which is `fin25`
+with a pass9 shader added, and that is a further 0.17 to 0.19 ms. Running the whole table again with
+the GPU timestamps off moved no frametime by more than 0.05 ms, so the cost of measuring is not in
+these numbers. `docs/DLLS.md` describes the three DLLs and `FSR4_PROFILE=1` reproduces the upscaler
+column on your own card.
+
+Against a control that loads the layer and changes nothing (`FSR4_SET=off FSR4_NO_SDOT_EXPAND=1`,
+18.93 ms on an earlier batch), the dot product rewrite alone takes about 4 ms off the upscaler
+without touching the picture.
 
 A Vega 56 gains far more. There the upscaler goes from 7.5 ms to about 3 ms. `docs/SETS.md` has the
 frametimes and every other set.
