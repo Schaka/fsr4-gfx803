@@ -39,6 +39,10 @@ cp "$REPO/tools/fsr4_layer/fsr4_layer.c" \
    "$REPO/tools/fsr4_layer/fsr4-run" \
    "$REPO/tools/fsr4_layer/README.md" "$DIR/layer/"
 cp -r "$REPO/tools/fsr4_layer/sets" "$DIR/layer/"
+# The layer ships built, like the driver, so the archive needs no compiler and no headers on the
+# user's machine. The sources go in too, for a user whose glibc is older than this build machine's.
+gcc -O2 -fPIC -shared -o "$DIR/layer/libfsr4_layer.so" \
+    "$REPO/tools/fsr4_layer/fsr4_layer.c" -lpthread
 cp "$REPO/docs/SETS.md" "$DIR/layer/SETS.md"
 cp "$REPO/docs/DLLS.md" "$DIR/layer/DLLS.md"
 # The layer README points at the repository layout, which the archive does not have.

@@ -20,12 +20,28 @@ if ldd "$DEST/libvulkan_radeon.so" | grep -q "not found"; then
 fi
 echo "All libraries resolved."
 
-if command -v gcc >/dev/null 2>&1; then
-  gcc -O2 -fPIC -shared -o "$SRC/layer/libfsr4_layer.so" "$SRC/layer/fsr4_layer.c" -lpthread
-  echo "Built the Vulkan layer in $SRC/layer"
+LAYER="$SRC/layer/libfsr4_layer.so"
+# The layer ships built. It is rebuilt only if the shipped one does not load here, which happens on a
+# distribution whose glibc is older than the build machine's.
+if [ -f "$LAYER" ] && ! ldd "$LAYER" 2>&1 | grep -q "not found"; then
+  echo "The Vulkan layer in $SRC/layer is ready."
 else
-  echo "gcc was not found, so the layer was not built. Build it later with:"
-  echo "  gcc -O2 -fPIC -shared -o $SRC/layer/libfsr4_layer.so $SRC/layer/fsr4_layer.c -lpthread"
+  echo "The shipped layer does not load on this system, so it must be rebuilt."
+  if command -v gcc >/dev/null 2>&1 &&
+     gcc -O2 -fPIC -shared -o "$LAYER.new" "$SRC/layer/fsr4_layer.c" -lpthread; then
+    mv "$LAYER.new" "$LAYER"
+    echo "Rebuilt the Vulkan layer in $SRC/layer"
+  else
+    rm -f "$LAYER.new"
+    echo
+    echo "The layer did not build. It needs gcc and the Vulkan headers:"
+    echo "  Ubuntu, Debian:  sudo apt install build-essential libvulkan-dev"
+    echo "  Fedora:          sudo dnf install gcc vulkan-headers"
+    echo "  Arch:            sudo pacman -S gcc vulkan-headers"
+    echo "Then run:"
+    echo "  gcc -O2 -fPIC -shared -o $LAYER $SRC/layer/fsr4_layer.c -lpthread"
+    echo "The driver works without the layer, but FSR4 stays slow."
+  fi
 fi
 
 cat <<EOF

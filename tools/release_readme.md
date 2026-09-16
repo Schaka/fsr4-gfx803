@@ -7,8 +7,20 @@ cards are the RX 470, RX 480, RX 570 and RX 580.
     cd fsr4-gfx803-RELEASE_TAG
     ./install.sh
 
-`install.sh` installs the driver under `~/.local/share/radv-fsr4` and builds the layer. It changes
-nothing system-wide, and it prints the two steps it cannot do for you.
+`install.sh` installs the driver under `~/.local/share/radv-fsr4`. It changes nothing system-wide, and
+it prints the two steps it cannot do for you.
+
+The driver and the Vulkan layer both ship built, so nothing is compiled on your machine. Both need
+glibc 2.38 or newer. If your distribution is older, `install.sh` says so and rebuilds the layer, and
+that needs gcc and the Vulkan headers:
+
+```bash
+sudo apt install build-essential libvulkan-dev   # Ubuntu, Debian
+sudo dnf install gcc vulkan-headers              # Fedora
+sudo pacman -S gcc vulkan-headers                # Arch
+```
+
+The driver itself cannot be rebuilt from this archive. To build it, see the repository README.
 
 ## Choose a DLL, then a tier
 

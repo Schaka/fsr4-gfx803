@@ -23,6 +23,14 @@ every variant on your card.
 
 ## Build
 
+The layer needs gcc and the Vulkan headers. Install them first:
+
+    sudo apt install build-essential libvulkan-dev   # Ubuntu, Debian
+    sudo dnf install gcc vulkan-headers              # Fedora
+    sudo pacman -S gcc vulkan-headers                # Arch
+
+Then build it:
+
     gcc -O2 -fPIC -shared -o libfsr4_layer.so fsr4_layer.c -lpthread
 
 ## Use it

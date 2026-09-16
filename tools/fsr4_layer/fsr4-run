@@ -95,6 +95,7 @@ fi
 if [ ! -f "$LAYER/libfsr4_layer.so" ]; then
     echo "fsr4-run: $LAYER/libfsr4_layer.so is missing. Build it with:" >&2
     echo "  gcc -O2 -fPIC -shared -o $LAYER/libfsr4_layer.so $LAYER/fsr4_layer.c -lpthread" >&2
+    echo "  It needs the Vulkan headers: libvulkan-dev on Ubuntu, vulkan-headers on Fedora and Arch." >&2
     exec "$@"
 fi
 
