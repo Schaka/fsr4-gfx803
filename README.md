@@ -333,10 +333,13 @@ Then run with `FSR4_SET=mine`. The layer names every dumped shader after the SPI
 a replacement up under that same name, so a set built this way needs no translation table and is
 valid for exactly the Proton build you dumped it from.
 
-![Pragmata title screen on the test machine, with the FSR4 watermark reading FSR4-I8 UPSCALE 4.1.1 and the OptiScaler 0.9.4 overlay open](docs/pragmata-fsr4-411-rx480.jpeg)
+![Pragmata in game on an RX 580, with the OptiScaler 10 overlay open showing FSR 4.1.1r10 upscaling 1280x720 to 1920x1080 and an upscaler time of 8.90 ms](docs/pragmata-fsr4-411-rx580.jpeg)
 
-The photo shows FSR 4.1.1 INT8 running in Pragmata on this GCN4 card, with the patched Mesa 26.1
-RADV, in August 2026. The overlay frametime is from the title screen, not a benchmark.
+The photo shows the BC-250 fork's FSR 4.1.1 build running in Pragmata on an RX 580, in September
+2026. The overlay reports 1280x720 upscaled to 1920x1080 and 8.90 ms of upscaler time. It names the
+card as an RX 480, because the RX 580 is the same Polaris 10 chip under the same device ID. The
+frametime in the corner is measured with the overlay open, which costs a good deal on its own, so
+it is not a benchmark.
 
 ---
 
