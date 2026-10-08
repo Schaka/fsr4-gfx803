@@ -25,7 +25,8 @@ Together, on an RX 570 in Pragmata at 1280x720 upscaled to 1920x1080, the upscal
 to 9.1 ms at the `balanced` tier and 7.5 ms at `speed`, and the frame goes from 17.4 ms to 11.1 ms
 and 9.6 ms. Keeping the result exact costs 12.6 ms of upscaler time, which is the floor: the hot
 shaders already run at 0.95 to 0.98 instructions per multiply, so going lower means doing less
-arithmetic rather than doing it better. A Vega 56 gains far more, from 7.5 ms to about 3 ms.
+arithmetic rather than doing it better. A Vega 56 goes from 8.35 ms to 4.39 ms with its own DLL,
+and `other_archs/vega56/` explains it.
 
 Nothing else is patched. Your normal Proton and vkd3d-proton are used as they are.
 
@@ -294,10 +295,11 @@ nothing: stock Mesa 26.2.2 already carries upstream merge request 41178, which a
 instructions costs 2.5 ms per frame more than the layer rewriting them itself. The logs are in
 `evidence/fsr-4.0.2-vs-4.1.1/` and `evidence/mesa-26.2.2-vs-our-patch/`.
 
-A Vega 56 gains far more: there the upscaler goes from 7.5 ms to about 3 ms. Polaris already runs
-FSR4's own code at one vector instruction per multiply, because it extracts weight bytes on the
-scalar unit, so there is less to win. The Vega also rewards weight baking on its own, while on
-Polaris baking alone is close to a wash. `docs/SETS.md` has the frametimes and every other set.
+An earlier version of this README said a Vega 56 goes from 7.5 ms to about 3 ms with a set. That
+did not reproduce when the card was measured again. On the Vega no set helps, and in Pragmata the
+best result is the `vega` DLL, from 8.35 ms to 4.39 ms. `other_archs/vega56/FINDINGS.md` has the
+measurements.
+`docs/SETS.md` has the frametimes and every other set for GCN4.
 
 Two findings are worth knowing before you pick a set.
 

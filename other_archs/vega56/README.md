@@ -3,6 +3,22 @@
 Measured once, on 15 September 2026, against FSR 4.1.1b in Pragmata at 1280x720 upscaled to
 1920x1080. Not maintained: the card it was derived on is no longer in the machine.
 
+## Which DLL this is
+
+The `vega` DLL is the `bc250` DLL with one more setting. It is not a wave64 version of `bc250`,
+because `bc250` already is one.
+
+Vega runs waves of 64 lanes only, and the fork asks for 32. The `bc250` DLL in the release already
+carries the wave64 fix that removes that request. So it runs on this card as it is, at 5.04 ms. The
+`vega` DLL is the same rebuild with `SKIP_ENTRIES=pass9,pass11`, which gives those two roles back to
+AMD's own shaders. It measures 4.39 ms.
+
+That split was measured in one game only, Pragmata. Another game can feed the network a different
+load, and then the fork's own pass9 and pass11 can be the faster ones again. So the `vega` DLL is
+not always the better choice on this card. Try both DLLs in your game and keep the faster one. The
+two give the same picture, because every shader in both is exact, so frametime is the only thing to
+compare.
+
 ## What to run
 
 First run `./install.sh` from the main archive, the same as for the GCN4 path. It puts the patched

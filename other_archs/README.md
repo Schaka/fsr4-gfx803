@@ -16,6 +16,9 @@ The main path in this repository, for GCN4, is maintained. These are not.
 | `vega56/` | Vega 56, gfx900 | the fork's build with two roles left to AMD's shaders |
 | `navi10/` | RX 5700 XT, gfx1010 | the fork's build unchanged, and nothing else at all |
 
+"The fork's build" here is the `bc250` DLL from the main release. It already carries the wave64 fix,
+so it runs on GCN4, Vega and RDNA alike. No card in this folder needs a wave64 version of its own.
+
 The two entries so far disagree about almost everything, which is the point of measuring each card
 rather than carrying an answer across. On the Vega two of AMD's shaders beat the fork's and the
 patched driver is worth 3.9x. On the Navi neither is true: no role is worth taking, and the driver

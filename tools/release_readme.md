@@ -29,8 +29,8 @@ in full. The short version:
 
 * `stock` is AMD's own DLL. Nothing to build, works with OptiScaler 0.9.4, slowest of the three.
 * `bc250` is the `daniel-h-0/bc250-fsr4-fork` rebuild at `v4.0.0-rc10`, made to run on GCN4. It
-  approximates nothing, and where its result differs from AMD's it is more accurate. Needs
-  OptiScaler 10.0.0-pre1.
+  carries the wave64 fix, so it also runs on Vega and RDNA. It approximates nothing, and where its
+  result differs from AMD's it is more accurate. Needs OptiScaler 10.0.0-pre1.
 * `hybrid` is that rebuild with ten model passes handed back to AMD's shaders, so the tuned sets can
   replace them. Fastest, and the only one where all four tiers do something.
 

@@ -29,6 +29,11 @@ The `daniel-h-0/bc250-fsr4-fork` DLL at `v4.0.0-rc10`, rebuilt to run on GCN4. E
 shaders carries its weights as constants instead of reading them from a buffer, which is faster and
 changes no result.
 
+The rebuild is two changes to the fork's shaders and nothing else. The first is the wave64 fix. The
+fork asks for waves of 32 lanes, which only RDNA has, and GCN4 and Vega run waves of 64 only. The
+fix removes that request, so this DLL runs on any of them. The second moves the prepass from 16-bit
+to 32-bit floats. No shader is left to AMD on purpose. `bc250/README.md` gives both steps.
+
 Use it if you want speed at no cost in quality. Nothing here approximates. Every shader does the
 arithmetic AMD's does, and the one place the result differs it is more accurate, not less: the
 prepass computes in 32-bit floats where AMD's uses 16-bit, which keeps 24 bits of each product
@@ -108,6 +113,15 @@ silently undoes your choice.
 measured once on that card, built once, and shipped as it stood. None of them is maintained, and
 none applies to a GCN4 card. `other_archs/` in the main archive says what each one is, what it
 costs and how it was built.
+
+The `vega` DLL is not a wave64 version of `bc250`, because `bc250` already is one. Both come from
+the same rebuild with the wave64 fix and the 32-bit prepass. The `vega` DLL adds one setting,
+`SKIP_ENTRIES=pass9,pass11`, which leaves those two roles to AMD's own shaders. The `bc250` DLL also
+runs on a Vega 56 as it is, at 5.04 ms of upscaler time against 4.39 ms for the `vega` DLL.
+
+Those two numbers come from Pragmata only. In another game the `bc250` DLL can be the faster one on
+a Vega. If you have a Vega, try both DLLs in your game and keep the faster one. Both are exact, so
+the picture is the same.
 
 ## Checking which one is running
 
